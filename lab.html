@@ -1,0 +1,273 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Laboratorio Filtro de Kalman</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <style>
+        :root {
+            --bg-main: #0f172a;
+            --bg-panel: #1e293b;
+            --bg-input: #334155;
+            --text-main: #f8fafc;
+            --text-muted: #cbd5e1;
+            --accent: #38bdf8;
+            --danger: #ef4444;
+            --success: #10b981;
+        }
+        body {
+            background-color: var(--bg-main);
+            color: var(--text-main);
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 20px;
+            display: flex;
+            gap: 20px;
+            height: 100vh;
+            box-sizing: border-box;
+        }
+        h2, h3, h4 { margin-top: 0; color: var(--accent); }
+        .panel {
+            background-color: var(--bg-panel);
+            border-radius: 8px;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+        .sidebar { width: 350px; overflow-y: auto; flex-shrink: 0; }
+        .main-content { flex-grow: 1; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
+        .chart-container { background-color: var(--bg-panel); border-radius: 8px; padding: 15px; flex-grow: 1; position: relative; }
+        select, button {
+            background-color: var(--bg-input);
+            color: var(--text-main);
+            border: none;
+            padding: 10px;
+            border-radius: 4px;
+            font-weight: bold;
+            width: 100%;
+            cursor: pointer;
+        }
+        button.danger { background-color: #7f1d1d; color: white; }
+        button.danger:hover { background-color: #991b1b; }
+        button.reset { background-color: #475569; }
+        .slider-container { display: flex; flex-direction: column; gap: 5px; }
+        input[type="range"] { width: 100%; }
+        .theory-box { background-color: var(--bg-main); border: 1px solid var(--bg-input); padding: 10px; border-radius: 4px; font-size: 14px; color: var(--text-muted); }
+    </style>
+</head>
+<body>
+
+    <div class="panel sidebar">
+        <h2>Configuración</h2>
+        
+        <label><b>Trayectoria Física:</b></label>
+        <select id="comboTraj">
+            <option value="0">1. Manual (Acelerador)</option>
+            <option value="1">2. Senoidal (Curvas)</option>
+        </select>
+
+        <div class="slider-container">
+            <label id="lblU">Acelerador (u): 0 m/s²</label>
+            <input type="range" id="sliderU" min="-40" max="40" value="0">
+        </div>
+
+        <div class="slider-container">
+            <label id="lblQ">Ruido Proceso (Q): 1000</label>
+            <input type="range" id="sliderQ" min="10" max="20000" value="1000">
+        </div>
+
+        <div>
+            <label><input type="checkbox" id="chkMismatch"> Ocultar aceleración (Física Ciega)</label><br>
+            </div>
+
+        <div style="flex-grow: 1;"></div>
+
+        <button class="danger" onclick="injectAnomaly()">💥 INYECTAR ANOMALÍA (+250m)</button>
+        <button class="reset" onclick="resetSystem()">🔄 REINICIAR SIMULACIÓN</button>
+
+        <div class="theory-box">
+            <h4>Variables de Estado Internas</h4>
+            <div id="matricesInfo" style="font-family: monospace; white-space: pre; color: var(--success);"></div>
+        </div>
+    </div>
+
+    <div class="main-content">
+        <div class="chart-container" style="flex-grow: 2;">
+            <canvas id="posChart"></canvas>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // LÓGICA DEL FILTRO DE KALMAN (Math.js)
+        // ==========================================
+        class KalmanFilter {
+            constructor(dt) {
+                this.dt = dt;
+                this.x = math.matrix([[0], [0]]); // [Posición, Velocidad]
+                this.F = math.matrix([[1, dt], [0, 1]]);
+                this.B = math.matrix([[0.5 * dt ** 2], [dt]]);
+                this.P = math.multiply(math.identity(2), 100);
+                this.H = math.matrix([[1, 0]]);
+                this.R = math.matrix([[500]]); // Ruido GPS
+                this.Q = math.zeros(2, 2);
+                this.q_scale = 1000;
+                this.K = math.zeros(2, 1);
+                this.updateQ();
+            }
+
+            updateQ() {
+                const G = math.matrix([[0.5 * this.dt ** 2], [this.dt]]);
+                const G_T = math.transpose(G);
+                this.Q = math.multiply(math.multiply(G, G_T), this.q_scale);
+            }
+
+            predict(u_control, modelMismatch) {
+                const u = modelMismatch ? 0 : u_control;
+                // x = F*x + B*u
+                this.x = math.add(math.multiply(this.F, this.x), math.multiply(this.B, u));
+                // P = F*P*F^T + Q
+                this.P = math.add(math.multiply(math.multiply(this.F, this.P), math.transpose(this.F)), this.Q);
+            }
+
+            update(z_gps) {
+                // y = z - H*x
+                const z = math.matrix([[z_gps]]);
+                const y = math.subtract(z, math.multiply(this.H, this.x));
+                
+                // S = H*P*H^T + R
+                const S = math.add(math.multiply(math.multiply(this.H, this.P), math.transpose(this.H)), this.R);
+                const S_inv = math.inv(S);
+                
+                // K = P*H^T*S^-1
+                this.K = math.multiply(math.multiply(this.P, math.transpose(this.H)), S_inv);
+                
+                // x = x + K*y
+                this.x = math.add(this.x, math.multiply(this.K, y));
+                
+                // P = (I - K*H)*P
+                const I = math.identity(2);
+                this.P = math.multiply(math.subtract(I, math.multiply(this.K, this.H)), this.P);
+                
+                return {
+                    pos: this.x.get([0, 0]),
+                    vel: this.x.get([1, 0]),
+                    p_pos: this.P.get([0, 0])
+                };
+            }
+        }
+
+        // ==========================================
+        // LÓGICA DE SIMULACIÓN E INTERFAZ
+        // ==========================================
+        let dt = 0.05;
+        let time = 0;
+        let true_p = 0;
+        let true_v = 0;
+        let anomaly = 0;
+        let kf = new KalmanFilter(dt);
+        let simulationInterval;
+
+        // Datos para Chart.js
+        const chartData = {
+            labels: [],
+            datasets: [
+                { label: 'Real', data: [], borderColor: '#ffffff', borderDash: [5, 5], borderWidth: 2, pointRadius: 0 },
+                { label: 'GPS', data: [], backgroundColor: 'rgba(239, 68, 68, 0.6)', pointRadius: 3, showLine: false },
+                { label: 'Filtro Kalman', data: [], borderColor: '#38bdf8', borderWidth: 3, pointRadius: 0 }
+            ]
+        };
+
+        const ctx = document.getElementById('posChart').getContext('2d');
+        const posChart = new Chart(ctx, {
+            type: 'line',
+            data: chartData,
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                animation: false,
+                scales: {
+                    x: { display: false },
+                    y: { grid: { color: '#334155' } }
+                },
+                plugins: { legend: { labels: { color: '#f8fafc' } } }
+            }
+        });
+
+        // Controles DOM
+        const sliderU = document.getElementById('sliderU');
+        const lblU = document.getElementById('lblU');
+        const sliderQ = document.getElementById('sliderQ');
+        const lblQ = document.getElementById('lblQ');
+        const chkMismatch = document.getElementById('chkMismatch');
+        const comboTraj = document.getElementById('comboTraj');
+        const matricesInfo = document.getElementById('matricesInfo');
+
+        sliderU.oninput = () => lblU.innerText = `Acelerador (u): ${sliderU.value} m/s²`;
+        sliderQ.oninput = () => {
+            lblQ.innerText = `Ruido Proceso (Q): ${sliderQ.value}`;
+            kf.q_scale = parseFloat(sliderQ.value);
+            kf.updateQ();
+        };
+
+        function injectAnomaly() { anomaly = 250; }
+
+        function resetSystem() {
+            time = 0; true_p = 0; true_v = 0; anomaly = 0;
+            kf = new KalmanFilter(dt);
+            chartData.labels = [];
+            chartData.datasets.forEach(ds => ds.data = []);
+            posChart.update();
+        }
+
+        // Bucle Principal
+        function step() {
+            let u_real = parseFloat(sliderU.value);
+            let traj = parseInt(comboTraj.value);
+
+            if (traj === 0) {
+                true_v += u_real * dt;
+            } else if (traj === 1) {
+                true_v = Math.cos(time) * 50;
+                u_real = -Math.sin(time) * 50;
+            }
+
+            true_v = Math.max(Math.min(true_v, 100), -100);
+            true_p += true_v * dt;
+
+            // Simulación de Sensor (Ruido Gaussiano simple)
+            let noise = (Math.random() + Math.random() + Math.random() + Math.random() - 2) * Math.sqrt(500);
+            let z_gps = true_p + noise + anomaly;
+            anomaly = 0;
+
+            // Kalman
+            kf.predict(u_real, chkMismatch.checked);
+            let est = kf.update(z_gps);
+
+            // Actualizar Gráfico
+            chartData.labels.push(time.toFixed(2));
+            chartData.datasets[0].data.push(true_p);
+            chartData.datasets[1].data.push(z_gps);
+            chartData.datasets[2].data.push(est.pos);
+
+            // Ventana deslizante (mantener últimos 200 puntos)
+            if (chartData.labels.length > 200) {
+                chartData.labels.shift();
+                chartData.datasets.forEach(ds => ds.data.shift());
+            }
+
+            posChart.update();
+
+            // Mostrar matrices
+            matricesInfo.innerText = `Matriz K (Ganancia):\n[${kf.K.get([0,0]).toFixed(3)}]\n[${kf.K.get([1,0]).toFixed(3)}]\n\nIncertidumbre P[0,0]:\n${est.p_pos.toFixed(1)}`;
+
+            time += dt;
+        }
+
+        simulationInterval = setInterval(step, 50);
+    </script>
+</body>
+</html>
