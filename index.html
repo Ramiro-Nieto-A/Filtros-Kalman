@@ -3,271 +3,687 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Laboratorio Filtro de Kalman</title>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/mathjs/11.8.0/math.js"></script>
+    <title>Kalman Filter Pro Lab — ITBA Edition</title>
+    <script src="https://cdn.tailwindcss.com"></script>
     <style>
+        @import url('https://fonts.googleapis.com/css2?family=SF+Pro+Display:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap');
+        
         :root {
-            --bg-main: #0f172a;
-            --bg-panel: #1e293b;
-            --bg-input: #334155;
-            --text-main: #f8fafc;
-            --text-muted: #cbd5e1;
-            --accent: #38bdf8;
-            --danger: #ef4444;
-            --success: #10b981;
+            --apple-blue: #0071e3;
+            --apple-green: #34c759;
+            --apple-amber: #ff9500;
+            --apple-red: #ff3b30;
         }
+
         body {
-            background-color: var(--bg-main);
-            color: var(--text-main);
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            margin: 0;
-            padding: 20px;
-            display: flex;
-            gap: 20px;
-            height: 100vh;
-            box-sizing: border-box;
+            font-family: 'SF Pro Display', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #000000;
+            color: #f5f5f7;
+            -webkit-font-smoothing: antialiased;
         }
-        h2, h3, h4 { margin-top: 0; color: var(--accent); }
-        .panel {
-            background-color: var(--bg-panel);
-            border-radius: 8px;
-            padding: 20px;
-            display: flex;
-            flex-direction: column;
-            gap: 15px;
+
+        .apple-blur {
+            background: rgba(22, 22, 23, 0.6);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
-        .sidebar { width: 350px; overflow-y: auto; flex-shrink: 0; }
-        .main-content { flex-grow: 1; display: flex; flex-direction: column; gap: 20px; min-width: 0; }
-        .chart-container { background-color: var(--bg-panel); border-radius: 8px; padding: 15px; flex-grow: 1; position: relative; }
-        select, button {
-            background-color: var(--bg-input);
-            color: var(--text-main);
-            border: none;
-            padding: 10px;
-            border-radius: 4px;
-            font-weight: bold;
-            width: 100%;
-            cursor: pointer;
+
+        .matrix-cell {
+            font-family: 'JetBrains Mono', monospace;
+            transition: all 0.2s ease;
         }
-        button.danger { background-color: #7f1d1d; color: white; }
-        button.danger:hover { background-color: #991b1b; }
-        button.reset { background-color: #475569; }
-        .slider-container { display: flex; flex-direction: column; gap: 5px; }
-        input[type="range"] { width: 100%; }
-        .theory-box { background-color: var(--bg-main); border: 1px solid var(--bg-input); padding: 10px; border-radius: 4px; font-size: 14px; color: var(--text-muted); }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: #000000; }
+        ::-webkit-scrollbar-thumb { background: #333336; border-radius: 4px; }
+        ::-webkit-scrollbar-thumb:hover { background: #424245; }
+
+        .tab-active {
+            border-bottom: 2px solid var(--apple-blue);
+            color: #ffffff;
+        }
     </style>
 </head>
-<body>
+<body class="p-4 md:p-8 min-h-screen flex flex-col justify-between gap-6">
 
-    <div class="panel sidebar">
-        <h2>Configuración</h2>
-        
-        <label><b>Trayectoria Física:</b></label>
-        <select id="comboTraj">
-            <option value="0">1. Manual (Acelerador)</option>
-            <option value="1">2. Senoidal (Curvas)</option>
-        </select>
-
-        <div class="slider-container">
-            <label id="lblU">Acelerador (u): 0 m/s²</label>
-            <input type="range" id="sliderU" min="-40" max="40" value="0">
-        </div>
-
-        <div class="slider-container">
-            <label id="lblQ">Ruido Proceso (Q): 1000</label>
-            <input type="range" id="sliderQ" min="10" max="20000" value="1000">
-        </div>
-
+    <header class="w-full max-w-7xl mx-auto flex flex-col sm:flex-row justify-between items-start sm:items-center border-b border-[#222224] pb-4 gap-4">
         <div>
-            <label><input type="checkbox" id="chkMismatch"> Ocultar aceleración (Física Ciega)</label><br>
+            <div class="flex items-center gap-3">
+                <span class="text-xs font-semibold tracking-widest uppercase px-2 py-0.5 bg-[#1d1d1f] text-gray-400 rounded-full border border-gray-800">
+                    Estocástica & Control
+                </span>
+                <span class="flex items-center gap-1.5 text-xs text-emerald-400">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span> Simulation Live
+                </span>
+            </div>
+            <h1 class="text-2xl md:text-3xl font-bold tracking-tight mt-1 bg-gradient-to-r from-white via-gray-200 to-gray-400 bg-clip-text text-transparent">
+                Filtro de Kalman: Laboratorio Avanzado
+            </h1>
+        </div>
+        <div class="text-left sm:text-right font-mono text-xs text-gray-500">
+            <div>Cátedra: Análisis de Señales y Sistemas Digitales</div>
+            <div class="text-[#0071e3] font-medium">Instituto Tecnológico de Buenos Aires (ITBA)</div>
+        </div>
+    </header>
+
+    <main class="w-full max-w-7xl mx-auto grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch flex-grow">
+        
+        <section class="lg:col-span-4 flex flex-col gap-5 apple-blur p-5 rounded-2xl overflow-y-auto max-h-[85vh]">
+            <div>
+                <h2 class="text-lg font-semibold text-white tracking-tight">Consola de Configuración</h2>
+                <p class="text-xs text-gray-400 mt-0.5">Modifique los escenarios físicos y parámetros cinemáticos en tiempo real.</p>
             </div>
 
-        <div style="flex-grow: 1;"></div>
+            <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-gray-300">Perfil de Trayectoria Física</label>
+                <select id="select-trajectory" class="w-full bg-[#1c1c1e] text-sm text-white rounded-xl p-3 border border-[#333336] focus:outline-none focus:border-[#0071e3] font-medium cursor-pointer">
+                    <option value="0">1. Entrada Manual (Acelerador Variable)</option>
+                    <option value="1">2. Trayectoria Senoidal (Cambios Continuos)</option>
+                    <option value="2">3. Maniobra de Frenado Brusco de Emergencia</option>
+                </select>
+            </div>
 
-        <button class="danger" onclick="injectAnomaly()">💥 INYECTAR ANOMALÍA (+250m)</button>
-        <button class="reset" onclick="resetSystem()">🔄 REINICIAR SIMULACIÓN</button>
+            <div class="flex flex-col gap-1.5">
+                <label class="text-xs font-medium text-gray-300">Escenario Sensorial & Presets</label>
+                <select id="select-preset" class="w-full bg-[#1c1c1e] text-sm text-white rounded-xl p-3 border border-[#333336] focus:outline-none focus:border-[#0071e3] font-medium cursor-pointer">
+                    <option value="0">0. Modo Libre Avanzado</option>
+                    <option value="1">1. Comportamiento Estocástico Ideal</option>
+                    <option value="2">2. Sensor GPS Altamente Ruidoso (Confianza en Q)</option>
+                    <option value="3">3. Física Ciega (Lag por Error de Modelo)</option>
+                    <option value="4">4. Fusión de Sensores Óptima (GPS + IMU)</option>
+                    <option value="5">5. Compuerta Estadística (Rechazo de Anomalías)</option>
+                </select>
+            </div>
 
-        <div class="theory-box">
-            <h4>Variables de Estado Internas</h4>
-            <div id="matricesInfo" style="font-family: monospace; white-space: pre; color: var(--success);"></div>
+            <div id="scenario-description" class="p-3.5 bg-[#1c1c1e] rounded-xl border border-[#2c2c2e] text-xs leading-relaxed text-gray-300 min-h-[90px]">
+                </div>
+
+            <hr class="border-[#222224]">
+
+            <div class="flex flex-col gap-4">
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between items-center text-xs font-medium">
+                        <span class="text-gray-300">Aceleración de Control (<span class="italic text-sky-400">u</span>)</span>
+                        <span id="value-u" class="font-mono text-white bg-[#2c2c2e] px-2 py-0.5 rounded">0 m/s²</span>
+                    </div>
+                    <input type="range" id="slider-u" min="-40" max="40" value="0" class="w-full h-1 bg-[#2c2c2e] rounded-lg appearance-none cursor-pointer accent-[#0071e3]">
+                </div>
+
+                <div class="flex flex-col gap-1.5">
+                    <div class="flex justify-between items-center text-xs font-medium">
+                        <span class="text-gray-300">Magnitud del Ruido de Proceso (<span class="italic text-emerald-400">q_scale</span>)</span>
+                        <span id="value-q" class="font-mono text-white bg-[#2c2c2e] px-2 py-0.5 rounded">1000</span>
+                    </div>
+                    <input type="range" id="slider-q" min="10" max="20000" value="1000" class="w-full h-1 bg-[#2c2c2e] rounded-lg appearance-none cursor-pointer accent-[#34c759]">
+                </div>
+            </div>
+
+            <div class="flex flex-col gap-2.5">
+                <label class="flex items-center gap-3 p-3 bg-[#1c1c1e] rounded-xl border border-[#2c2c2e] cursor-pointer select-none hover:border-[#3a3a3c] transition-all">
+                    <input type="checkbox" id="chk-mismatch" class="w-4 h-4 rounded text-[#0071e3] bg-[#2c2c2e] border-none focus:ring-0 cursor-pointer">
+                    <div class="flex flex-col">
+                        <span class="text-xs font-medium text-white">Ocultar aceleración (Física Ciega)</span>
+                        <span class="text-[10px] text-gray-500">Provoca un desfase temporal al invalidar la matriz B.</span>
+                    </div>
+                </label>
+
+                <label class="flex items-center gap-3 p-3 bg-[#1c1c1e] rounded-xl border border-[#2c2c2e] cursor-pointer select-none hover:border-[#3a3a3c] transition-all">
+                    <input type="checkbox" id="chk-imu" class="w-4 h-4 rounded text-[#0071e3] bg-[#2c2c2e] border-none focus:ring-0 cursor-pointer">
+                    <div class="flex flex-col">
+                        <span class="text-xs font-medium text-white">Fusión de datos con IMU (Sensor de Vel)</span>
+                        <span class="text-[10px] text-gray-500">Expande la matriz H a 2 DOF colapsando la incertidumbre.</span>
+                    </div>
+                </label>
+
+                <label class="flex items-center gap-3 p-3 bg-[#1c1c1e] rounded-xl border border-[#2c2c2e] cursor-pointer select-none hover:border-[#3a3a3c] transition-all">
+                    <input type="checkbox" id="chk-mahalanobis" class="w-4 h-4 rounded text-[#0071e3] bg-[#2c2c2e] border-none focus:ring-0 cursor-pointer">
+                    <div class="flex flex-col">
+                        <span class="text-xs font-medium text-white">Compuerta Estadística Anti-Anomalías</span>
+                        <span class="text-[10px] text-gray-500">Filtra picos de ruido mediante Distancia de Mahalanobis.</span>
+                    </div>
+                </label>
+            </div>
+
+            <div class="grid grid-cols-1 gap-2 mt-auto">
+                <button id="btn-anomaly" class="w-full bg-[#ff3b30] hover:bg-[#ff453a] active:scale-[0.99] text-white font-semibold text-xs py-3 rounded-xl transition-all tracking-wide shadow-lg shadow-red-950/20 uppercase">
+                    💥 Inyectar Anomalía de Posición (+250m)
+                </button>
+                <button id="btn-reset" class="w-full bg-[#2c2c2e] hover:bg-[#3a3a3c] text-gray-200 font-medium text-xs py-3 rounded-xl transition-all tracking-wide">
+                    🔄 Reiniciar Matriz y Cronograma
+                </button>
+            </div>
+        </section>
+
+        <section class="lg:col-span-8 flex flex-col gap-6">
+            
+            <div class="flex flex-col flex-grow apple-blur p-4 rounded-2xl h-[340px] relative">
+                <div class="flex justify-between items-center mb-2">
+                    <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Espacio de Estado real vs. Estimación</h3>
+                    <div class="flex gap-4 text-[11px] font-medium">
+                        <span class="flex items-center gap-1"><span class="w-3 h-0.5 border-t border-dashed border-white inline-block"></span> Real</span>
+                        <span class="flex items-center gap-1"><span class="w-2 h-2 rounded-full bg-[#ff3b30] inline-block"></span> GPS Medido</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-0.5 bg-[#0071e3] inline-block"></span> Filtro Kalman</span>
+                        <span class="flex items-center gap-1"><span class="w-3 h-2 bg-sky-500/10 inline-block"></span> Región de Confianza ($3\sigma$)</span>
+                    </div>
+                </div>
+                <div class="w-full flex-grow relative overflow-hidden bg-[#09090b] rounded-xl border border-[#1c1c1e]">
+                    <canvas id="canvas-trajectory" class="w-full h-full absolute inset-0"></canvas>
+                </div>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-12 gap-6 items-stretch">
+                
+                <div class="md:col-span-7 flex flex-col gap-3 apple-blur p-4 rounded-2xl">
+                    <div class="flex justify-between items-center">
+                        <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider">Álgebra del Filtro en Tiempo Real</h3>
+                        <span class="text-[10px] text-[#34c759] font-mono">Actualización recursiva discreta</span>
+                    </div>
+                    
+                    <div class="grid grid-cols-3 gap-3 flex-grow">
+                        <div class="bg-[#09090b] border border-[#1c1c1e] rounded-xl p-3 flex flex-col justify-between cursor-help group relative">
+                            <span class="text-[10px] font-bold text-gray-500 tracking-wider group-hover:text-emerald-400 transition-colors">MATRIZ Q (Proceso)</span>
+                            <div id="mat-q" class="text-center font-mono text-xs text-emerald-400 whitespace-pre leading-relaxed py-2 font-bold"></div>
+                            <span class="text-[9px] text-gray-500 block text-center border-t border-[#1c1c1e] pt-1">Incertidumbre física</span>
+                            <div class="absolute bottom-full left-0 mb-2 w-52 p-2 bg-[#1c1c1e] text-[10px] text-gray-300 rounded-lg shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 border border-gray-800 leading-normal">
+                                Covarianza de perturbaciones dinámicas no modeladas. Sus componentes escalan con la aceleración.
+                            </div>
+                        </div>
+
+                        <div class="bg-[#09090b] border border-[#1c1c1e] rounded-xl p-3 flex flex-col justify-between cursor-help group relative">
+                            <span class="text-[10px] font-bold text-gray-500 tracking-wider group-hover:text-sky-400 transition-colors">MATRIZ P (Covarianza)</span>
+                            <div id="mat-p" class="text-center font-mono text-xs text-sky-400 whitespace-pre leading-relaxed py-2 font-bold"></div>
+                            <span class="text-[9px] text-gray-500 block text-center border-t border-[#1c1c1e] pt-1">Margen de duda</span>
+                            <div class="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 p-2 bg-[#1c1c1e] text-[10px] text-gray-300 rounded-lg shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 border border-gray-800 leading-normal">
+                                Cuantifica el error estimado a posteriori. La diagonal principal representa la varianza de posición y velocidad.
+                            </div>
+                        </div>
+
+                        <div class="bg-[#09090b] border border-[#1c1c1e] rounded-xl p-3 flex flex-col justify-between cursor-help group relative">
+                            <span class="text-[10px] font-bold text-gray-500 tracking-wider group-hover:text-amber-400 transition-colors">MATRIZ K (Ganancia)</span>
+                            <div id="mat-k" class="text-center font-mono text-xs text-amber-400 whitespace-pre leading-relaxed py-2 font-bold"></div>
+                            <span class="text-[9px] text-gray-500 block text-center border-t border-[#1c1c1e] pt-1">Balanza de pesos</span>
+                            <div class="absolute bottom-full right-0 mb-2 w-52 p-2 bg-[#1c1c1e] text-[10px] text-gray-300 rounded-lg shadow-xl opacity-0 pointer-events-none group-hover:opacity-100 transition-opacity z-50 border border-gray-800 leading-normal">
+                                Ganancia óptima de Kalman. Pondera si el filtro debe confiar más en la inercia matemática o en el sensor.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="md:col-span-5 flex flex-col apple-blur p-4 rounded-2xl h-[170px]">
+                    <h3 class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Error de Innovación ($z_k - H\hat{x}_k^-$)</h3>
+                    <div class="w-full flex-grow relative bg-[#09090b] rounded-xl border border-[#1c1c1e] overflow-hidden">
+                        <canvas id="canvas-innovation" class="w-full h-full absolute inset-0"></canvas>
+                    </div>
+                </div>
+
+            </div>
+        </section>
+    </main>
+
+    <section class="w-full max-w-7xl mx-auto apple-blur p-6 rounded-2xl mt-4">
+        <div class="border-b border-[#222224] pb-3 mb-4 flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+            <div>
+                <h2 class="text-base font-semibold text-white tracking-tight">Fundamentos Teóricos & Derivación Algebraica</h2>
+                <p class="text-xs text-gray-400">Compendio analítico estructurado basado en los lineamientos del ITBA.</p>
+            </div>
+            <div class="flex flex-wrap gap-2 text-xs font-medium text-gray-400">
+                <button onclick="switchTheoryTab(0)" id="btn-tab-0" class="px-3 py-1.5 hover:text-white transition-all rounded-lg bg-[#1c1c1e] border border-transparent">1. Espacio de Estados</button>
+                <button onclick="switchTheoryTab(1)" id="btn-tab-1" class="px-3 py-1.5 hover:text-white transition-all rounded-lg bg-[#1c1c1e] border border-transparent">2. El Observador Clásico</button>
+                <button onclick="switchTheoryTab(2)" id="btn-tab-2" class="px-3 py-1.5 hover:text-white transition-all rounded-lg bg-[#1c1c1e] border border-transparent">3. Enfoque Estocástico</button>
+                <button onclick="switchTheoryTab(3)" id="btn-tab-3" class="px-3 py-1.5 hover:text-white transition-all rounded-lg bg-[#1c1c1e] border border-transparent">4. Ecuaciones del Filtro</button>
+            </div>
         </div>
-    </div>
 
-    <div class="main-content">
-        <div class="chart-container" style="flex-grow: 2;">
-            <canvas id="posChart"></canvas>
-        </div>
-    </div>
+        <div id="theory-content" class="text-xs md:text-sm text-gray-300 leading-relaxed min-h-[160px] bg-[#09090b] p-4 rounded-xl border border-[#1c1c1e]">
+            </div>
+    </section>
+
+    <footer class="w-full max-w-7xl mx-auto text-center text-[11px] text-gray-600 mt-6 border-t border-[#111112] pt-4 font-mono">
+        Procesamiento Digital de Señales — Proyecto de Simulación de Control Estocástico. Desarrollado con arquitectura nativa web de alta velocidad.
+    </footer>
 
     <script>
-        // ==========================================
-        // LÓGICA DEL FILTRO DE KALMAN (Math.js)
-        // ==========================================
-        class KalmanFilter {
+        // --- MOTOR ÁLGEBRA MATRICIAL BÁSICO (Para evitar dependencias de librerías de terceros) ---
+        const Matrix = {
+            add: (A, B) => A.map((row, i) => row.map((val, j) => val + B[i][j])),
+            subtract: (A, B) => A.map((row, i) => row.map((val, j) => val - B[i][j])),
+            multiply: (A, B) => {
+                let res = Array(A.length).fill(0).map(() => Array(B[0].length).fill(0));
+                for(let i=0; i<A.length; i++) {
+                    for(let j=0; j<B[0].length; j++) {
+                        for(let k=0; k<A[0].length; k++) {
+                            res[i][j] += A[i][k] * B[k][j];
+                        }
+                    }
+                }
+                return res;
+            },
+            transpose: (A) => A[0].map((_, colIndex) => A.map(row => row[colIndex])),
+            identity: (n) => Array(n).fill(0).map((_, i) => Array(n).fill(0).map((_, j) => i === j ? 1 : 0)),
+            inverse2x2: (A) => {
+                let det = A[0][0] * A[1][1] - A[0][1] * A[1][0];
+                if (Math.abs(det) < 1e-9) return [[0,0],[0,0]];
+                let invDet = 1.0 / det;
+                return [
+                    [A[1][1] * invDet, -A[0][1] * invDet],
+                    [-A[1][0] * invDet, A[0][0] * invDet]
+                ];
+            }
+        };
+
+        // --- CLASE FILTRO DE KALMAN AVANZADO ---
+        class AdvancedKalmanFilter {
             constructor(dt) {
                 this.dt = dt;
-                this.x = math.matrix([[0], [0]]); // [Posición, Velocidad]
-                this.F = math.matrix([[1, dt], [0, 1]]);
-                this.B = math.matrix([[0.5 * dt ** 2], [dt]]);
-                this.P = math.multiply(math.identity(2), 100);
-                this.H = math.matrix([[1, 0]]);
-                this.R = math.matrix([[500]]); // Ruido GPS
-                this.Q = math.zeros(2, 2);
-                this.q_scale = 1000;
-                this.K = math.zeros(2, 1);
-                this.updateQ();
+                this.x = [[0], [0]]; // [Posición], [Velocidad]
+                this.F = [[1, dt], [0, 1]];
+                this.B = [[0.5 * dt * dt], [dt]];
+                this.P = [[100, 0], [0, 100]];
+                this.q_scale = 1000.0;
+                this.r_gps = 500.0;
+                this.r_imu = 50.0;
+                
+                this.use_imu = false;
+                this.use_mahalanobis = false;
+                this.model_mismatch = false;
+                
+                this.Q = [[0,0],[0,0]];
+                this.K = [[0],[0]];
+                this.innovation = 0.0;
+                this.updateMatrices();
             }
 
-            updateQ() {
-                const G = math.matrix([[0.5 * this.dt ** 2], [this.dt]]);
-                const G_T = math.transpose(G);
-                this.Q = math.multiply(math.multiply(G, G_T), this.q_scale);
+            updateMatrices() {
+                // Q = G * G^T * q_scale
+                let G = [[0.5 * this.dt * this.dt], [this.dt]];
+                this.Q = Matrix.multiply(G, Matrix.transpose(G)).map(row => row.map(v => v * this.q_scale));
             }
 
-            predict(u_control, modelMismatch) {
-                const u = modelMismatch ? 0 : u_control;
+            predict(u_control) {
+                let u_filter = this.model_mismatch ? 0.0 : u_control;
                 // x = F*x + B*u
-                this.x = math.add(math.multiply(this.F, this.x), math.multiply(this.B, u));
+                let Fx = Matrix.multiply(this.F, this.x);
+                let Bu = this.B.map(row => [row[0] * u_filter]);
+                this.x = Matrix.add(Fx, Bu);
+                
                 // P = F*P*F^T + Q
-                this.P = math.add(math.multiply(math.multiply(this.F, this.P), math.transpose(this.F)), this.Q);
+                let FP = Matrix.multiply(this.F, this.P);
+                let FPFt = Matrix.multiply(FP, Matrix.transpose(this.F));
+                this.P = Matrix.add(FPFt, this.Q);
+                
+                return [JSON.parse(JSON.stringify(this.x)), JSON.parse(JSON.stringify(this.P))];
             }
 
-            update(z_gps) {
-                // y = z - H*x
-                const z = math.matrix([[z_gps]]);
-                const y = math.subtract(z, math.multiply(this.H, this.x));
-                
-                // S = H*P*H^T + R
-                const S = math.add(math.multiply(math.multiply(this.H, this.P), math.transpose(this.H)), this.R);
-                const S_inv = math.inv(S);
-                
-                // K = P*H^T*S^-1
-                this.K = math.multiply(math.multiply(this.P, math.transpose(this.H)), S_inv);
-                
-                // x = x + K*y
-                this.x = math.add(this.x, math.multiply(this.K, y));
-                
-                // P = (I - K*H)*P
-                const I = math.identity(2);
-                this.P = math.multiply(math.subtract(I, math.multiply(this.K, this.H)), this.P);
-                
-                return {
-                    pos: this.x.get([0, 0]),
-                    vel: this.x.get([1, 0]),
-                    p_pos: this.P.get([0, 0])
-                };
+            update(z_gps, z_imu) {
+                let H, R, z;
+                if (this.use_imu && z_imu !== null) {
+                    H = [[1, 0], [0, 1]];
+                    R = [[this.r_gps, 0], [0, this.r_imu]];
+                    z = [[z_gps], [z_imu]];
+                } else {
+                    H = [[1, 0]];
+                    R = [[this.r_gps]];
+                    z = [[z_gps]];
+                }
+
+                // e = z - H * x
+                let Hx = Matrix.multiply(H, this.x);
+                let e = Matrix.subtract(z, Hx);
+                this.innovation = e[0][0];
+
+                // S = H * P * H^T + R
+                let HP = Matrix.multiply(H, this.P);
+                let HPHt = Matrix.multiply(HP, Matrix.transpose(H));
+                let S = Matrix.add(HPHt, R);
+
+                // S_inv & Mahalanobis Distance
+                let S_inv, md;
+                if (H.length === 1) {
+                    S_inv = [[1.0 / S[0][0]]];
+                    md = e[0][0] * S_inv[0][0] * e[0][0];
+                } else {
+                    S_inv = Matrix.inverse2x2(S);
+                    let eT = Matrix.transpose(e);
+                    let eT_Sinv = Matrix.multiply(eT, S_inv);
+                    let md_mat = Matrix.multiply(eT_Sinv, e);
+                    md = md_mat[0][0];
+                }
+
+                let thresh = (H.length === 2) ? 5.99 : 3.84;
+                if (this.use_mahalanobis && md > thresh) {
+                    // Rechazar medición: mantener predicción intacta
+                    return [JSON.parse(JSON.stringify(this.x)), JSON.parse(JSON.stringify(this.P))];
+                }
+
+                // K = P * H^T * S_inv
+                let PHt = Matrix.multiply(this.P, Matrix.transpose(H));
+                this.K = Matrix.multiply(PHt, S_inv);
+
+                // x = x + K * e
+                let Ke = Matrix.multiply(this.K, e);
+                this.x = Matrix.add(this.x, Ke);
+
+                // P = (I - K * H) * P
+                let KH = Matrix.multiply(this.K, H);
+                let I = Matrix.identity(this.P.length);
+                let I_KH = Matrix.subtract(I, KH);
+                this.P = Matrix.multiply(I_KH, this.P);
+
+                return [JSON.parse(JSON.stringify(this.x)), JSON.parse(JSON.stringify(this.P))];
             }
         }
 
-        // ==========================================
-        // LÓGICA DE SIMULACIÓN E INTERFAZ
-        // ==========================================
+        // --- GESTIÓN DE SIMULACIÓN EN TIEMPO REAL ---
+        let filter, simInterval;
+        let time = 0.0;
+        let true_p = 0.0;
+        let true_v = 0.0;
         let dt = 0.05;
-        let time = 0;
-        let true_p = 0;
-        let true_v = 0;
-        let anomaly = 0;
-        let kf = new KalmanFilter(dt);
-        let simulationInterval;
+        let v_max = 100.0;
+        let anomaly_to_inject = 0.0;
 
-        // Datos para Chart.js
-        const chartData = {
-            labels: [],
-            datasets: [
-                { label: 'Real', data: [], borderColor: '#ffffff', borderDash: [5, 5], borderWidth: 2, pointRadius: 0 },
-                { label: 'GPS', data: [], backgroundColor: 'rgba(239, 68, 68, 0.6)', pointRadius: 3, showLine: false },
-                { label: 'Filtro Kalman', data: [], borderColor: '#38bdf8', borderWidth: 3, pointRadius: 0 }
-            ]
-        };
+        // Historiales de registro de datos
+        let logs = { time: [], true_p: [], gps: [], kf_p: [], innov: [], p_pos: [] };
 
-        const ctx = document.getElementById('posChart').getContext('2d');
-        const posChart = new Chart(ctx, {
-            type: 'line',
-            data: chartData,
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                animation: false,
-                scales: {
-                    x: { display: false },
-                    y: { grid: { color: '#334155' } }
-                },
-                plugins: { legend: { labels: { color: '#f8fafc' } } }
-            }
-        });
-
-        // Controles DOM
-        const sliderU = document.getElementById('sliderU');
-        const lblU = document.getElementById('lblU');
-        const sliderQ = document.getElementById('sliderQ');
-        const lblQ = document.getElementById('lblQ');
-        const chkMismatch = document.getElementById('chkMismatch');
-        const comboTraj = document.getElementById('comboTraj');
-        const matricesInfo = document.getElementById('matricesInfo');
-
-        sliderU.oninput = () => lblU.innerText = `Acelerador (u): ${sliderU.value} m/s²`;
-        sliderQ.oninput = () => {
-            lblQ.innerText = `Ruido Proceso (Q): ${sliderQ.value}`;
-            kf.q_scale = parseFloat(sliderQ.value);
-            kf.updateQ();
-        };
-
-        function injectAnomaly() { anomaly = 250; }
-
-        function resetSystem() {
-            time = 0; true_p = 0; true_v = 0; anomaly = 0;
-            kf = new KalmanFilter(dt);
-            chartData.labels = [];
-            chartData.datasets.forEach(ds => ds.data = []);
-            posChart.update();
+        function initSimulation() {
+            filter = new AdvancedKalmanFilter(dt);
+            time = 0.0; true_p = 0.0; true_v = 0.0; anomaly_to_inject = 0.0;
+            logs = { time: [], true_p: [], gps: [], kf_p: [], innov: [], p_pos: [] };
+            updateMatrixDisplay(filter.Q, filter.P, filter.K);
         }
 
-        // Bucle Principal
-        function step() {
-            let u_real = parseFloat(sliderU.value);
-            let traj = parseInt(comboTraj.value);
+        function simulationStep() {
+            let trajIndex = parseInt(document.getElementById('select-trajectory').value);
+            let u_slider = parseFloat(document.getElementById('slider-u').value);
+            let u_real = u_slider;
 
-            if (traj === 0) {
+            // Selección cinemática
+            if (trajIndex === 0) {
                 true_v += u_real * dt;
-            } else if (traj === 1) {
-                true_v = Math.cos(time) * 50;
-                u_real = -Math.sin(time) * 50;
+            } else if (trajIndex === 1) {
+                true_v = Math.cos(time) * 50.0;
+                u_real = -Math.sin(time) * 50.0;
+            } else if (trajIndex === 2) {
+                if (time < 3.0) {
+                    true_v = 80.0; u_real = 0.0;
+                } else {
+                    true_v -= 50.0 * dt; u_real = -50.0;
+                }
             }
 
-            true_v = Math.max(Math.min(true_v, 100), -100);
+            true_v = Math.max(Math.min(true_v, v_max), -v_max);
             true_p += true_v * dt;
 
-            // Simulación de Sensor (Ruido Gaussiano simple)
-            let noise = (Math.random() + Math.random() + Math.random() + Math.random() - 2) * Math.sqrt(500);
-            let z_gps = true_p + noise + anomaly;
-            anomaly = 0;
+            // Mediciones ruidosas estocásticas normales (Box-Muller transform para ruido gaussiano)
+            let gaussianNoise = () => Math.sqrt(-2.0 * Math.log(Math.random())) * Math.cos(2.0 * Math.PI * Math.random());
+            let gps_measured = true_p + gaussianNoise() * Math.sqrt(filter.r_gps) + anomaly_to_inject;
+            anomaly_to_inject = 0.0; // Consumir anomalía
+            let imu_measured = true_v + gaussianNoise() * Math.sqrt(filter.r_imu);
 
-            // Kalman
-            kf.predict(u_real, chkMismatch.checked);
-            let est = kf.update(z_gps);
+            // Leer variables de la interfaz de usuario
+            filter.q_scale = parseFloat(document.getElementById('slider-q').value);
+            filter.model_mismatch = document.getElementById('chk-mismatch').checked;
+            filter.use_imu = document.getElementById('chk-imu').checked;
+            filter.use_mahalanobis = document.getElementById('chk-mahalanobis').checked;
+            filter.updateMatrices();
 
-            // Actualizar Gráfico
-            chartData.labels.push(time.toFixed(2));
-            chartData.datasets[0].data.push(true_p);
-            chartData.datasets[1].data.push(z_gps);
-            chartData.datasets[2].data.push(est.pos);
+            // Ciclo fundamental del filtro de Kalman
+            filter.predict(u_real);
+            let [x_up, P_up] = filter.update(gps_measured, imu_measured);
 
-            // Ventana deslizante (mantener últimos 200 puntos)
-            if (chartData.labels.length > 200) {
-                chartData.labels.shift();
-                chartData.datasets.forEach(ds => ds.data.shift());
+            // Almacenar en buffers circulares para visualización (Máx 150 puntos para optimización)
+            logs.time.push(time);
+            logs.true_p.push(true_p);
+            logs.gps.push(gps_measured);
+            logs.kf_p.push(x_up[0][0]);
+            logs.innov.push(filter.innovation);
+            logs.p_pos.push(P_up[0][0]);
+
+            if (logs.time.length > 150) {
+                Object.keys(logs).forEach(key => logs[key].shift());
             }
 
-            posChart.update();
-
-            // Mostrar matrices
-            matricesInfo.innerText = `Matriz K (Ganancia):\n[${kf.K.get([0,0]).toFixed(3)}]\n[${kf.K.get([1,0]).toFixed(3)}]\n\nIncertidumbre P[0,0]:\n${est.p_pos.toFixed(1)}`;
+            // Renderizado de datos e interfaz gráfica
+            updateMatrixDisplay(filter.Q, P_up, filter.K);
+            renderCharts();
 
             time += dt;
         }
 
-        simulationInterval = setInterval(step, 50);
+        // --- SISTEMA DE RENDERIZADO EN LÍNEA POR CANVAS ---
+        function renderCharts() {
+            renderTrajectoryCanvas();
+            renderInnovationCanvas();
+        }
+
+        function renderTrajectoryCanvas() {
+            const canvas = document.getElementById('canvas-trajectory');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            
+            // Ajustar tamaño del buffer interno al tamaño de pantalla real
+            const rect = canvas.getBoundingClientRect();
+            if(canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+                canvas.width = rect.width * dpr;
+                canvas.height = rect.height * dpr;
+            }
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, rect.width, rect.height);
+
+            if(logs.time.length < 2) return;
+
+            // Escalamiento Dinámico de Ventana Deslizante Temporal
+            let minX = Math.max(0, time - 7.5);
+            let maxX = time + 0.5;
+            let currentTrueP = logs.true_p[logs.true_p.length - 1];
+            let minY = currentTrueP - 130;
+            let maxY = currentTrueP + 130;
+
+            let mapX = (t) => ((t - minX) / (maxX - minX)) * rect.width;
+            let mapY = (p) => rect.height - ((p - minY) / (maxY - minY)) * rect.height;
+
+            // Dibuja Rejilla de Fondo Sutil
+            ctx.strokeStyle = '#1c1c1e';
+            ctx.lineWidth = 1;
+            for(let step = Math.floor(minY/50)*50; step <= maxY; step+=50) {
+                ctx.beginPath(); ctx.moveTo(0, mapY(step)); ctx.lineTo(rect.width, mapY(step)); ctx.stroke();
+            }
+
+            // 1. Región de Confianza Sombreada Teórica (3 Sigmas)
+            ctx.fillStyle = 'rgba(0, 113, 227, 0.08)';
+            ctx.beginPath();
+            ctx.moveTo(mapX(logs.time[0]), mapY(logs.kf_p[0] + 3 * Math.sqrt(logs.p_pos[0])));
+            for(let i=1; i<logs.time.length; i++) {
+                ctx.lineTo(mapX(logs.time[i]), mapY(logs.kf_p[i] + 3 * Math.sqrt(logs.p_pos[i])));
+            }
+            for(let i=logs.time.length-1; i>=0; i--) {
+                ctx.lineTo(mapX(logs.time[i]), mapY(logs.kf_p[i] - 3 * Math.sqrt(logs.p_pos[i])));
+            }
+            ctx.closePath(); ctx.fill();
+
+            // 2. Trazo Verdadero Físico (Línea de Puntos Blanca)
+            ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 1.5; ctx.setLineDash([4, 4]);
+            ctx.beginPath(); ctx.moveTo(mapX(logs.time[0]), mapY(logs.true_p[0]));
+            for(let i=1; i<logs.time.length; i++) ctx.lineTo(mapX(logs.time[i]), mapY(logs.true_p[i]));
+            ctx.stroke(); ctx.setLineDash([]);
+
+            // 3. Dispersión Estocástica de Puntos del GPS (Rojo)
+            for(let i=0; i<logs.time.length; i++) {
+                let gx = mapX(logs.time[i]); let gy = mapY(logs.gps[i]);
+                if(gx >= 0 && gx <= rect.width && gy >= 0 && gy <= rect.height) {
+                    ctx.fillStyle = 'rgba(255, 59, 48, 0.6)';
+                    ctx.beginPath(); ctx.arc(gx, gy, 2.5, 0, 2 * Math.PI); ctx.fill();
+                }
+            }
+
+            // 4. Estimación del Filtro de Kalman (Línea Sólida Azul Eléctrico de Apple)
+            ctx.strokeStyle = '#0071e3'; ctx.lineWidth = 2.5;
+            ctx.beginPath(); ctx.moveTo(mapX(logs.time[0]), mapY(logs.kf_p[0]));
+            for(let i=1; i<logs.time.length; i++) ctx.lineTo(mapX(logs.time[i]), mapY(logs.kf_p[i]));
+            ctx.stroke();
+        }
+
+        function renderInnovationCanvas() {
+            const canvas = document.getElementById('canvas-innovation');
+            const ctx = canvas.getContext('2d');
+            const dpr = window.devicePixelRatio || 1;
+            const rect = canvas.getBoundingClientRect();
+            
+            if(canvas.width !== rect.width * dpr || canvas.height !== rect.height * dpr) {
+                canvas.width = rect.width * dpr; canvas.height = rect.height * dpr;
+            }
+            ctx.scale(dpr, dpr);
+            ctx.clearRect(0, 0, rect.width, rect.height);
+
+            if(logs.time.length < 2) return;
+
+            let minX = Math.max(0, time - 7.5); let maxX = time + 0.5;
+            let mapX = (t) => ((t - minX) / (maxX - minX)) * rect.width;
+            
+            // Buscar pico absoluto para autoescalar el eje Y de los residuos
+            let maxInnov = Math.max(...logs.innov.map(Math.abs), 20);
+            let mapY = (v) => rect.height/2 - (v / (maxInnov * 1.1)) * (rect.height/2);
+
+            // Eje central de referencia (Cero Error)
+            ctx.strokeStyle = '#222224'; ctx.lineWidth = 1;
+            ctx.beginPath(); ctx.moveTo(0, rect.height/2); ctx.lineTo(rect.width, rect.height/2); ctx.stroke();
+
+            // Dibujar curva de error de innovación (Ámbar)
+            ctx.strokeStyle = '#ff9500'; ctx.lineWidth = 1.5;
+            ctx.beginPath(); ctx.moveTo(mapX(logs.time[0]), mapY(logs.innov[0]));
+            for(let i=1; i<logs.time.length; i++) ctx.lineTo(mapX(logs.time[i]), mapY(logs.innov[i]));
+            ctx.stroke();
+        }
+
+        function updateMatrixDisplay(Q, P, K) {
+            let formatMat = (m) => {
+                if(m.length === 2 && m[0].length === 2) {
+                    return `[${m[0][0].toFixed(1).padStart(6)}  ${m[0][1].toFixed(1).padStart(6)}]\n[${m[1][0].toFixed(1).padStart(6)}  ${m[1][1].toFixed(1).padStart(6)}]`;
+                } else if(m.length === 2 && m[0].length === 1) {
+                    return `[${m[0][0].toFixed(2).padStart(5)}]\n[${m[1][0].toFixed(2).padStart(5)}]`;
+                }
+                return `[${m[0][0].toFixed(1)}]`;
+            };
+            document.getElementById('mat-q').textContent = formatMat(Q);
+            document.getElementById('mat-p').textContent = formatMat(P);
+            document.getElementById('mat-k').textContent = formatMat(K);
+        }
+
+        // --- SISTEMA INTERACTIVO DE PRESETS & MENÚS ---
+        const presets = [
+            "<strong>0. Modo Libre Avanzado:</strong> Tome el control total del entorno de pruebas. Manipule el acelerador físico, modifique la magnitud del ruido intrínseco del proceso ($Q$) y active los sensores a discreción para observar cómo muta la convergencia matricial de forma asíncrona.",
+            "<strong>1. Comportamiento Estocástico Ideal:</strong> El vehículo opera de acuerdo a las leyes cinemáticas base y el GPS posee baja dispersión. Observe cómo la matriz de covarianza del error ($P$) decrece exponencialmente hasta estabilizarse. El filtro equilibra perfectamente la inercia con las lecturas físicas.",
+            "<strong>2. Sensor GPS Altamente Ruidoso:</strong> Minimizamos el valor de $Q$ de manera forzada. Le indicamos al filtro: 'La física matemática es perfecta; los sensores mienten de forma recurrente'. La línea azul ignora las lecturas aleatorias del GPS y confía ciegamente en la inercia del modelo cinemático.",
+            "<strong>3. Física Ciega (Lag por Error de Modelo):</strong> El vehículo acelera bruscamente en la realidad, pero el filtro es privado del conocimiento de los comandos de control ($u = 0$ para su matemática). Verá un retraso estructural ('Lag') en la estimación; el algoritmo tarda en reaccionar debido a que su modelo asume velocidad constante.",
+            "<strong>4. Fusión de Sensores Óptima:</strong> Incorporamos lecturas simultáneas de un sensor inercial de velocidad (IMU). Al poseer dos fuentes ortogonales de validación física, la franja azul de incertidumbre ($P$) colapsa rápidamente, incrementando la robustez de la estimación ante ruidos exógenos.",
+            "<strong>5. Compuerta Estadística (Distancia de Mahalanobis):</strong> Se activa el filtrado estadístico adaptativo. Si inyecta una anomalía crítica mediante el botón rojo, el filtro calculará el residuo estocástico y, al comprobar que es estadísticamente improbable, lo descartará de inmediato para no corromper el estado."
+        ];
+
+        document.getElementById('select-preset').addEventListener('change', (e) => {
+            let index = parseInt(e.target.value);
+            document.getElementById('scenario-description').innerHTML = presets[index];
+            
+            // Valores por defecto
+            document.getElementById('slider-u').value = 0;
+            document.getElementById('slider-q').value = 1000;
+            document.getElementById('chk-mismatch').checked = false;
+            document.getElementById('chk-imu').checked = false;
+            document.getElementById('chk-mahalanobis').checked = false;
+            
+            if(index === 2) document.getElementById('slider-q').value = 10;
+            else if(index === 3) { document.getElementById('chk-mismatch').checked = true; document.getElementById('slider-u').value = 30; }
+            else if(index === 4) document.getElementById('chk-imu').checked = true;
+            else if(index === 5) document.getElementById('chk-mahalanobis').checked = true;
+
+            document.getElementById('value-u').textContent = document.getElementById('slider-u').value + " m/s²";
+            document.getElementById('value-q').textContent = document.getElementById('slider-q').value;
+        });
+
+        // Listeners de los Sliders
+        document.getElementById('slider-u').addEventListener('input', (e) => document.getElementById('value-u').textContent = e.target.value + " m/s²");
+        document.getElementById('slider-q').addEventListener('input', (e) => document.getElementById('value-q').textContent = e.target.value);
+        
+        // Listeners de Botones
+        document.getElementById('btn-anomaly').addEventListener('click', () => anomaly_to_inject = 250.0);
+        document.getElementById('btn-reset').addEventListener('click', () => initSimulation());
+        document.getElementById('select-trajectory').addEventListener('change', () => initSimulation());
+
+        // --- SISTEMA COMPENDIO TEÓRICO EN TABS ---
+        const theoryTabs = [
+            `<h3 class="text-white font-semibold text-sm mb-2">1. Representación Estructural en el Espacio de Estados</h3>
+             <p class="mb-2">La teoría moderna de control modela el comportamiento interno de sistemas dinámicos multivariables lineales e invariantes en el tiempo (LTI) utilizando ecuaciones diferenciales matriciales de primer orden. El estado se define formalmente como la mínima cantidad de información requerida en un instante $t_0$ para mapear autónomamente el futuro del sistema.</p>
+             <div class="bg-[#1c1c1e] p-3 rounded-lg font-mono text-xs text-sky-400 my-2 border border-gray-800 leading-relaxed">
+                 $$\\dot{x}(t) = Ax(t) + Bu(t)$$
+                 $$y(t) = Cx(t) + Du(t)$$
+             </div>
+             <p class="text-xs text-gray-400">Donde $x(t)$ representa el vector de estado interno, $u(t)$ el vector de excitación externa, y $y(t)$ las variables observables medidas por los instrumentos de ingeniería.</p>`,
+             
+            `<h3 class="text-white font-semibold text-sm mb-2">2. El Observador Determinista de Luenberger & El Principio de Separación</h3>
+             <p class="mb-2">En escenarios físicos reales, múltiples variables de estado no están disponibles para medición directa por barreras físicas o inviabilidad económica. Un observador clásico duplica de forma analítica la dinámica del sistema físico inyectando un término corrector basado en el error de salida para forzar la convergencia autónoma del error:</p>
+             <div class="bg-[#1c1c1e] p-3 rounded-lg font-mono text-xs text-amber-400 my-2 border border-gray-800 leading-relaxed">
+                 $$\\dot{e} = (A - LC)e$$
+             </div>
+             <p class="mb-2">El cálculo determinista requiere configurar la matriz estática de ganancia $L$ de modo que los autovalores de $(A - LC)$ se posicionen estrictamente en el semiplano izquierdo del plano complejo complejo ($s$).</p>
+             <p class="text-xs text-gray-400 font-medium text-red-400">⚠️ Limitación estructural crítica: Al ser una ganancia estática calculada a priori, el observador clásico carece de adaptabilidad y es incapaz de discriminar si una desviación es una aceleración real o un pico de ruido aleatorio en el sensor.</p>`,
+
+            `<h3 class="text-white font-semibold text-sm mb-2">3. El Enfoque Estocástico: Modelado de Incertidumbre y Ruidos Blancos</h3>
+             <p class="mb-2">Para superar la rigidez del modelo determinista, el Filtro de Kalman formaliza el problema modelando las perturbaciones y las imprecisiones físicas de los sensores como variables aleatorias independientes gaussianas de media cero, caracterizadas por matrices dinámicas de covarianza:</p>
+             <div class="bg-[#1c1c1e] p-3 rounded-lg font-mono text-xs text-emerald-400 my-2 border border-gray-800 leading-relaxed">
+                 $$x_{k+1} = A_k x_k + B u_k + w_k \\quad \\rightarrow \\quad Q = E[w_k w_k^T]$$
+                 $$z_k = H_k x_k + v_k \\quad \\rightarrow \\quad R = E[v_k v_k^T]$$
+             </div>
+             <ul class="list-disc pl-5 text-xs text-gray-400 space-y-1">
+                 <li>La <strong>Matriz $Q$</strong> inyecta la "Duda de Proceso", contemplando dinámicas físicas no modeladas (viento, derrapes, fricción).</li>
+                 <li>La <strong>Matriz $R$</strong> cuantifica la varianza del error instrumental, indicándole al filtro el grado de desconfianza hacia el hardware.</li>
+             </ul>`,
+
+            `<h3 class="text-white font-semibold text-sm mb-2">4. Las Ecuaciones Recursivas Universales de Predicción y Corrección</h3>
+             <p class="mb-2">El algoritmo opera en un ciclo infinito de dos etapas temporales:</p>
+             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-2">
+                 <div class="bg-[#1c1c1e] p-3 rounded-lg border border-gray-800">
+                     <span class="text-xs font-bold text-sky-400">PROYECCIÓN EN EL TIEMPO (Predicción)</span>
+                     <pre class="text-[11px] font-mono mt-1 text-gray-300">
+\\(\\hat{x}_k^- = A \\hat{x}_{k-1} + B u_k\\)
+\\(P_k^- = A P_{k-1} A^T + Q\\)</pre>
+                 </div>
+                 <div class="bg-[#1c1c1e] p-3 rounded-lg border border-gray-800">
+                     <span class="text-xs font-bold text-amber-400">CORRECCIÓN DE DATOS (Actualización)</span>
+                     <pre class="text-[11px] font-mono mt-1 text-gray-300">
+\\(K_k = P_k^- H^T (H P_k^- H^T + R)^{-1}\\)
+\\(\\hat{x}_k = \\hat{x}_k^- + K_k (z_k - H \\hat{x}_k^-)\\)
+\\(P_k = (I - K_k H) P_k^-\\)</pre>
+                 </div>
+             </div>
+             <p class="text-xs text-gray-400">Bajo esta formulación, la Ganancia de Kalman ($K$) actúa como una balanza matemática en tiempo real: minimiza de forma estricta la traza de la matriz de covarianza a posteriori $P_k$, garantizando una estimación óptima de varianza mínima.</p>`
+        ];
+
+        function switchTheoryTab(index) {
+            document.getElementById('theory-content').innerHTML = theoryTabs[index];
+            for(let i=0; i<4; i++) {
+                const btn = document.getElementById(`btn-tab-${i}`);
+                if(i === index) {
+                    btn.classList.add('bg-[#0071e3]', 'text-white');
+                    btn.classList.remove('bg-[#1c1c1e]', 'text-gray-400');
+                } else {
+                    btn.classList.remove('bg-[#0071e3]', 'text-white');
+                    btn.classList.add('bg-[#1c1c1e]', 'text-gray-400');
+                }
+            }
+            // Disparar reprocesamiento de notación LaTeX si existiera alguna librería configurada en el cliente
+            if (window.MathJax) MathJax.typeset();
+        }
+
+        // --- INICIALIZACIÓN DE LA APLICACIÓN WEB ---
+        window.onload = () => {
+            initSimulation();
+            document.getElementById('scenario-description').innerHTML = presets[0];
+            switchTheoryTab(0);
+            
+            // Bucle principal de ejecución a 20 Hz (Cada 50ms igual que en PyQt6)
+            simInterval = setInterval(simulationStep, 50);
+        };
     </script>
 </body>
 </html>
