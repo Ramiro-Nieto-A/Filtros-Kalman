@@ -628,9 +628,12 @@ function updateIMUIndicators(){
     let el=document.getElementById(id);
     if(el){el.classList.toggle('visible',on);}
   });
-  document.getElementById('imu-badge').textContent='IMU 2×2';
-  document.getElementById('imu-badge2').textContent='IMU activo — H 2×2';
-  document.getElementById('imu-badge3').textContent='2×2';
+  let badgeEl1 = document.getElementById('imu-badge');
+  let badgeEl2 = document.getElementById('imu-badge2');
+  let badgeEl3 = document.getElementById('imu-badge3');
+  if (badgeEl1) badgeEl1.textContent='IMU 2×2';
+  if (badgeEl2) badgeEl2.textContent='IMU activo — H 2×2';
+  if (badgeEl3) badgeEl3.textContent='2×2';
 }
 
 // ─── CANVAS ───
@@ -670,21 +673,25 @@ function renderMain(){
   let mx=v=>((v-tMin)/(tMax-tMin))*W;
   let my=v=>H-((v-yMin)/(yMax-yMin))*H;
   grid(ctx,W,H);
-  if(isPos){
-    ctx.fillStyle='rgba(47,128,237,0.07)';
-    ctx.beginPath();
-    ctx.moveTo(mx(logs.t[0]),my(logs.kf_p[0]+3*Math.sqrt(Math.max(0,pArr[0]))));
-    for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(yArr[i]+3*Math.sqrt(Math.max(0,pArr[i]))));
-    for(let i=logs.t.length-1;i>=0;i--)ctx.lineTo(mx(logs.t[i]),my(yArr[i]-3*Math.sqrt(Math.max(0,pArr[i]))));
-    ctx.closePath();ctx.fill();
-  }
+  
+  // 3-sigma uncertainty band
+  ctx.fillStyle='rgba(47,128,237,0.07)';
+  ctx.beginPath();
+  ctx.moveTo(mx(logs.t[0]),my(yArr[0]+3*Math.sqrt(Math.max(0,pArr[0]))));
+  for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(yArr[i]+3*Math.sqrt(Math.max(0,pArr[i]))));
+  for(let i=logs.t.length-1;i>=0;i--)ctx.lineTo(mx(logs.t[i]),my(yArr[i]-3*Math.sqrt(Math.max(0,pArr[i]))));
+  ctx.closePath();ctx.fill();
+
   ctx.strokeStyle='rgba(255,255,255,0.45)';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
   ctx.beginPath();ctx.moveTo(mx(logs.t[0]),my(tArr[0]));
   for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(tArr[i]));
   ctx.stroke();ctx.setLineDash([]);
   for(let i=0;i<logs.t.length;i+=2){
     let gx=mx(logs.t[i]),gy=my(gArr[i]);
-    if(gx>=0&&gx<=W&&gy>=-10&&gy<=H+10){ctx.fillStyle='rgba(231,76,60,0.55)';ctx.beginPath();ctx.arc(gx,gy,2.5,0,2*Math.PI);ctx.fill();}
+    if(gx>=0&&gx<=W&&gy>=-10&&gy<=H+10){
+      ctx.fillStyle=isPos?'rgba(231,76,60,0.55)':'rgba(86,182,194,0.55)';
+      ctx.beginPath();ctx.arc(gx,gy,2.5,0,2*Math.PI);ctx.fill();
+    }
   }
   ctx.strokeStyle=isPos?'#2f80ed':'#27ae60';ctx.lineWidth=2.5;
   ctx.beginPath();ctx.moveTo(mx(logs.t[0]),my(yArr[0]));
@@ -811,6 +818,7 @@ const PRESET_CFG=[
 document.getElementById('sel-preset').addEventListener('change',e=>{
   let idx=+e.target.value;
   document.getElementById('desc').innerHTML=PRESETS[idx];
+  renderMath(document.getElementById('desc'));
   let cfg=PRESET_CFG[idx];if(!cfg||!Object.keys(cfg).length)return;
   document.getElementById('sl-u').value=cfg.u;document.getElementById('lbl-u').textContent=cfg.u+' m/s²';
   document.getElementById('sl-q').value=cfg.q;document.getElementById('lbl-q').textContent=cfg.q.toLocaleString();
@@ -826,7 +834,7 @@ document.getElementById('sel-preset').addEventListener('change',e=>{
 
 // ─── EKF PENDULUM DEMO ───
 let ekfSim=null,ekfInterval=null;
-const ekfLogs={t:[],true_th:[],meas:[],ekf_th:[],lin_th:[]};
+const ekfLogs={t:[],true_th:[],true_om:[],meas:[],ekf_th:[],lin_th:[]};
 let ekf_t=0;
 
 function initEKF(){
@@ -839,17 +847,17 @@ function initEKF(){
 }
 
 function ekfStep(){
-  let th0=ekfLogs.true_th.length?ekfLogs.true_th[ekfLogs.true_th.length-1]:0.8;
-  let om0=ekfLogs.t.length>1?(th0-(ekfLogs.true_th[ekfLogs.true_th.length-2]||th0))/0.05:0;
-  // true nonlinear pendulum
-  let th_new=th0+om0*0.05;
-  let om_new=om0-(9.81/1.0)*Math.sin(th0)*0.05;
-  // measurement: noisy sin(theta)
-  let meas=Math.sin(th_new)+gauss()*0.22;
+  let th_prev = ekfLogs.true_th.length ? ekfLogs.true_th[ekfLogs.true_th.length - 1] : 0.8;
+  let om_prev = ekfLogs.true_om.length ? ekfLogs.true_om[ekfLogs.true_om.length - 1] : 0.0;
+  
+  // Euler-Cromer integration for the true pendulum simulation (extremely stable energy conservation)
+  let om_new = om_prev - (9.81 / 1.0) * Math.sin(th_prev) * 0.05;
+  let th_new = th_prev + om_new * 0.05;
 
-  ekfSim.x=[[th_new],[om_new]]; // set true state for display
-  let ekf_before=new PendulumEKF(0.05,9.81,1.0);
-  // use running EKF
+  // measurement: noisy sin(theta)
+  let meas=Math.sin(th_new)+gauss()*Math.sqrt(ekfSim.R[0][0]);
+
+  // EKF predict and update
   ekfSim.predict();
   ekfSim.update(meas);
 
@@ -857,7 +865,7 @@ function ekfStep(){
   let dt=0.05,g=9.81;
   let Fl=[[1,dt],[-g*dt,1]];
   let Ql=[[0.001,0],[0,0.001]];
-  let Rl=[[0.05]];
+  let Rl=[ekfSim.R[0][0]];
   let lx=ekfSim.lkf_x,lP=ekfSim.lkf_P;
   // predict
   lx=M.mul(Fl,lx);
@@ -874,9 +882,11 @@ function ekfStep(){
 
   ekfLogs.t.push(ekf_t);
   ekfLogs.true_th.push(th_new);
+  ekfLogs.true_om.push(om_new);
   ekfLogs.meas.push(Math.asin(Math.max(-1,Math.min(1,meas)))); // back to angle
   ekfLogs.ekf_th.push(ekfSim.x[0][0]);
   ekfLogs.lin_th.push(lx[0][0]);
+  
   if(ekfLogs.t.length>200)for(let k in ekfLogs)ekfLogs[k].shift();
   ekf_t+=0.05;
   renderEKF();
@@ -915,139 +925,183 @@ function renderEKF(){
   ctx.stroke();
 }
 
+function setupEKFControls(){
+  let slR = document.getElementById('ekf-sl-r');
+  let lblR = document.getElementById('ekf-lbl-r');
+  let btnR = document.getElementById('ekf-btn-reset');
+  if(slR && lblR){
+    slR.addEventListener('input', e => {
+      let val = +e.target.value;
+      let rVal = val / 10000;
+      ekfSim.R = [[rVal]];
+      lblR.textContent = rVal.toFixed(4);
+    });
+  }
+  if(btnR){
+    btnR.addEventListener('click', () => {
+      initEKF();
+    });
+  }
+}
+
 // ─── THEORY TABS ───
 const THEORY=[
 `<h3>1. Representación en espacio de estados</h3>
 <p>La teoría moderna de control describe sistemas dinámicos mediante ecuaciones matriciales de primer orden. Para un sistema lineal discreto (LTI-D):</p>
-<div class="math-block">$$x_{k+1} = F\\,x_k + B\\,u_k + w_k, \\qquad z_k = H\\,x_k + v_k$$</div>
+<div class="math-block">$$x_{k+1} = F\,x_k + B\,u_k + w_k, \qquad z_k = H\,x_k + v_k$$</div>
 <p>En esta simulación: $x_k = [\\text{pos},\\;\\text{vel}]^\\top$. La cinemática de aceleración constante produce:</p>
 <div class="math-block">$$F = \\begin{bmatrix}1 & \\Delta t \\\\ 0 & 1\\end{bmatrix}, \\quad B = \\begin{bmatrix}\\tfrac{1}{2}\\Delta t^2 \\\\ \\Delta t\\end{bmatrix}, \\quad H_{GPS} = \\begin{bmatrix}1 & 0\\end{bmatrix}, \\quad H_{IMU} = \\begin{bmatrix}1 & 0 \\\\ 0 & 1\\end{bmatrix}$$</div>
-<p>Cuando se activa la fusión IMU, $H$ pasa de $1\\times2$ a $2\\times2$, lo que modifica directamente las dimensiones de $K$ (de $2\\times1$ a $2\\times2$) y la matriz de innovación $S$ (de escalar a $2\\times2$). Eso es exactamente lo que se ve en el panel de álgebra en tiempo real.</p>
+<p>Cuando se activa la fusión IMU, la matriz de observación $H$ pasa de $1\\times2$ a $2\\times2$, lo que modifica directamente las dimensiones de la ganancia de Kalman $K$ (de $2\\times1$ a $2\\times2$) y la covarianza de la innovación $S$ (de escalar a $2\\times2$). Eso es exactamente lo que se ve en el panel de álgebra en tiempo real.</p>
 <p>Los ruidos $w_k \\sim \\mathcal{N}(0,Q)$ y $v_k \\sim \\mathcal{N}(0,R)$ son gaussianos blancos de media cero, independientes entre sí y respecto al estado inicial.</p>`,
 
 `<h3>2. El observador determinista de Luenberger</h3>
 <p>Antes del Filtro de Kalman, el observador de Luenberger estimaba estados no medibles con una ganancia estática $L$ calculada offline:</p>
-<div class="math-block">$$\\dot{\\hat{x}} = A\\hat{x} + Bu + L(y - C\\hat{x}) \\quad \\Rightarrow \\quad \\dot{e} = (A - LC)\\,e$$</div>
-<p>Los polos de $(A-LC)$ se ubican en el semiplano izquierdo para garantizar $e \\to 0$. Más alejados del eje imaginario: convergencia más rápida, pero mayor amplificación del ruido.</p>
+<div class="math-block">$$\\hat{x}_{k+1} = F\\hat{x}_k + Bu_k + L(z_k - H\\hat{x}_k)$$</div>
+<p>La dinámica del error de estimación $e_k = x_k - \\hat{x}_k$ está gobernada por la ecuación:</p>
+<div class="math-block">$$e_{k+1} = (F - LH)\\,e_k$$</div>
+<p>Los polos de $(F-LH)$ se ubican en el semiplano izquierdo para garantizar que $e_k \\to 0$. Más alejados del origen (en discreto): convergencia más rápida, pero mayor amplificación del ruido de medición.</p>
 <div class="warn-box">⚠ <strong>Limitación estructural:</strong> La ganancia $L$ es constante. El observador no puede distinguir si una desviación es una aceleración real o un pico de ruido; no se adapta al nivel de incertidumbre actual. El Filtro de Kalman resuelve esto haciendo $L \\equiv K_k$ óptima y variable en el tiempo.</div>`,
 
 `<h3>3. El enfoque estocástico: modelado de incertidumbre</h3>
-<p>Kalman reformula el problema como minimización de varianza. Define covarianzas que cuantifican explícitamente la incertidumbre de modelo y sensor:</p>
+<p>El Filtro de Kalman reformula el problema de estimación en un marco estocástico, minimizando la varianza del error de estimación. En lugar de estimar un vector de estado puntual determinista, el filtro estima la <strong>distribución de probabilidad gaussiana</strong> del estado en cada instante, caracterizada por:</p>
 <ul>
-<li>$Q = E[w_k w_k^\\top]$ — covarianza del ruido de proceso. En la simulación: $Q = G\\,G^\\top \\cdot q\\_scale$ donde $G = [\\frac{1}{2}\\Delta t^2,\\; \\Delta t]^\\top$.</li>
-<li>$R = E[v_k v_k^\\top]$ — covarianza del ruido de medición. Sin IMU: escalar $R = r_{gps}$. Con IMU: $R = \\text{diag}(r_{gps},\\, r_{imu})$, matriz $2\\times2$.</li>
+  <li>Su media $\\hat{x}_k$, que representa la estimación más probable.</li>
+  <li>Su matriz de covarianza $P_k = \\mathbb{E}[(x_k - \\hat{x}_k)(x_k - \\hat{x}_k)^\\top]$, que cuantifica la incertidumbre de la estimación.</li>
 </ul>
-<div class="math-block">$$\\hat{x}_k^* = \\arg\\min_{\\hat{x}} \\; \\text{tr}\\!\\left(E\\!\\left[(x_k - \\hat{x})(x_k - \\hat{x})^\\top\\right]\\right)$$</div>
-<p>La solución cerrada de este problema de optimización cuadrática bajo restricciones lineales son exactamente las ecuaciones recursivas del Filtro de Kalman.</p>`,
-
-`<h3>4. Ecuaciones recursivas del filtro</h3>
-<p>El ciclo alterna <em>predicción</em> (proyecta el estado hacia adelante con el modelo cinemático) y <em>corrección</em> (incorpora la medición del sensor ponderada por la ganancia óptima):</p>
+<p>El balance fundamental del filtro está controlado por las covarianzas de ruido:</p>
 <div class="theory-cols">
-<div class="theory-box">
-<div class="box-label blue">Predicción (a priori)</div>
-<div class="math-block" style="margin:6px 0">$$\\hat{x}_k^- = F\\hat{x}_{k-1} + Bu_k$$</div>
-<div class="math-block" style="margin:6px 0">$$P_k^- = F\\,P_{k-1}\\,F^\\top + Q$$</div>
+  <div class="theory-box">
+    <div class="box-label green">Ruido de Proceso $Q$</div>
+    <p>Modela la incertidumbre en la física del sistema (ej. ráfagas de viento, baches en el camino, aceleraciones no medidas). Representa qué tan imperfecto es nuestro modelo de transición.</p>
+  </div>
+  <div class="theory-box">
+    <div class="box-label amber">Ruido de Medición $R$</div>
+    <p>Modela la imprecisión propia de los sensores (ruido del GPS o IMU). Representa la dispersión estadística de las lecturas experimentales respecto al valor verdadero.</p>
+  </div>
 </div>
-<div class="theory-box">
-<div class="box-label amber">Corrección (a posteriori)</div>
-<div class="math-block" style="margin:6px 0">$$S_k = H P_k^- H^\\top + R$$</div>
-<div class="math-block" style="margin:6px 0">$$K_k = P_k^- H^\\top S_k^{-1}$$</div>
-<div class="math-block" style="margin:6px 0">$$\\hat{x}_k = \\hat{x}_k^- + K_k(z_k - H\\hat{x}_k^-)$$</div>
-<div class="math-block" style="margin:6px 0">$$P_k = (I - K_k H)\\,P_k^-$$</div>
-</div>
-</div>
-<p>La <strong>innovación</strong> $\\tilde{z}_k = z_k - H\\hat{x}_k^-$ cuantifica la sorpresa: cuánto difiere la realidad de la predicción. La <strong>ganancia $K_k$</strong> es la balanza óptima: si $P \\gg R$, el filtro confía en el sensor; si $P \\ll R$, confía en el modelo. Con IMU activo, $K_k$ es $2\\times2$: una columna corrige la posición y otra la velocidad.</p>`,
+<p>Al ajustar estos parámetros en los controles (sliders de la izquierda), usted modifica directamente la relación entre $Q$ y $R$. Si incrementa $q\\_scale$ (mayor $Q$), el filtro duda de la física y confía más en el sensor, por lo que la estimación reacciona rápido pero copia el ruido. Si incrementa $R_{gps}$ (mayor $R$), el filtro duda del sensor y confía en el modelo inercial, volviéndose muy suave pero lento ante cambios de velocidad.</p>`,
 
-`<h3>5. Divergencia del filtro y estrategias de ajuste</h3>
-<p>Un filtro diverge cuando la covarianza estimada $P$ subestima el error real. El estado estimado se aleja del verdadero sin que el filtro lo detecte. Causas típicas:</p>
+`<h3>4. Ecuaciones del ciclo Predict-Correct (Predicción y Corrección)</h3>
+<p>El Filtro de Kalman ejecuta un ciclo recursivo de dos fases en cada intervalo de tiempo $\\Delta t$:</p>
+<div class="theory-cols">
+  <div class="theory-box">
+    <div class="box-label blue">Fase de Predicción (Tiempo)</div>
+    <p>Proyecta el estado y la covarianza al instante siguiente utilizando la física del modelo:</p>
+    <ul>
+      <li><strong>Estado a priori:</strong> $$\\hat{x}_k^- = F\\hat{x}_{k-1} + Bu_{k-1}$$</li>
+      <li><strong>Covarianza a priori:</strong> $$P_k^- = FP_{k-1}F^\\top + Q$$</li>
+    </ul>
+  </div>
+  <div class="theory-box">
+    <div class="box-label green">Fase de Corrección (Medición)</div>
+    <p>Corrige la predicción usando la información fresca provista por los sensores:</p>
+    <ul>
+      <li><strong>Innovación residual:</strong> $$\\tilde{z}_k = z_k - H\\hat{x}_k^-$$</li>
+      <li><strong>Covarianza de la innovación:</strong> $$S_k = HP_k^-H^\\top + R$$</li>
+      <li><strong>Ganancia óptima de Kalman:</strong> $$K_k = P_k^-H^\\top S_k^{-1}$$</li>
+      <li><strong>Estado a posteriori:</strong> $$\\hat{x}_k = \\hat{x}_k^- + K_k\\tilde{z}_k$$</li>
+      <li><strong>Covarianza a posteriori:</strong> $$P_k = (I - K_kH)P_k^-$$</li>
+    </ul>
+  </div>
+</div>
+<p>La ganancia $K_k$ actúa como una balanza óptima en tiempo real. Observe en el panel de álgebra cómo la covarianza de la estimación $P$ colapsa y se estabiliza (alcanzando el estado estacionario) tras unos pocos segundos de simulación, estabilizando así las ganancias de Kalman correspondientes.</p>`,
+
+`<h3>5. Sintonía del filtro y problemas de convergencia</h3>
+<p>El ajuste fino (<em>tuning</em>) de las matrices $Q$ y $R$ es crítico en aplicaciones de ingeniería. Un mal ajuste puede producir:</p>
 <ul>
-<li><strong>$Q$ muy baja:</strong> El filtro asume modelo perfecto; $P$ colapsa a cero y deja de actualizar. Pruébelo con el preset "Q nula".</li>
-<li><strong>$Q$ muy alta:</strong> $P$ nunca converge; el filtro siempre copia el sensor ruidoso.</li>
-<li><strong>Deriva del sensor:</strong> Bias sistemático no modelado en $R$. La innovación deja de ser de media cero. Visible en el preset "Deriva del sensor".</li>
-<li><strong>Mismatch de modelo:</strong> Ocultar la aceleración $u$ equivale a usar un modelo incorrecto; produce lag acumulativo.</li>
+  <li><strong>Lag temporal (Retardo estructural):</strong> Ocurre si $Q$ es muy pequeña o si el filtro desconoce el control real del sistema (como en el Preset de <em>Física ciega</em>, donde la aceleración real se oculta). Al no incorporar $u$ en la predicción, el filtro depende puramente de las mediciones para \"arrastrar\" la estimación, lo que genera un retardo visible en la curva de velocidad y posición.</li>
+  <li><strong>Divergencia del filtro:</strong> Si definimos una $Q$ nula ($Q = 0$), el filtro asume que su modelo de física es matemáticamente perfecto. La covarianza $P$ colapsa a cero, haciendo que la ganancia de Kalman $K \\to 0$. A partir de allí, el filtro ignora por completo a los sensores. Si el modelo físico difiere aunque sea levemente de la realidad, la estimación divergirá indefinidamente.</li>
 </ul>
-<p><strong>Diagnóstico:</strong> Una innovación bien calibrada debe ser <em>ruido blanco</em> de media cero con varianza igual a $S_k = HP_k^-H^\\top + R$. Desviaciones indican mal ajuste. La <strong>distancia de Mahalanobis</strong> $d^2 = \\tilde{z}^\\top S^{-1} \\tilde{z}$ sigue una distribución $\\chi^2$; valores por encima del umbral $\\chi^2_{0.05}$ (3.84 para 1 DOF, 5.99 para 2 DOF) delatan outliers.</p>
-<div class="theory-cols">
-<div class="theory-box">
-<div class="box-label blue">Ajuste offline</div>
-<p style="font-size:12px;margin-top:6px">Identificar $Q$ y $R$ desde datos: la autocovarianza de la innovación debe ser cero para $k \\ne j$. Métodos: EM (Expectation-Maximization) o el estimador de Mehra (1970).</p>
-</div>
-<div class="theory-box">
-<div class="box-label green">Ajuste adaptativo (AKF)</div>
-<p style="font-size:12px;margin-top:6px">Estimar $Q$ y $R$ en línea con ventanas deslizantes sobre la innovación. Permite al filtro reaccionar a cambios de régimen dinámico sin rediseño manual.</p>
-</div>
+<div class="theory-box" style="margin-top:10px">
+  <div class="box-label purple">Compuerta Estadística de Mahalanobis</div>
+  <p>Para evitar que interferencias graves o fallos catastróficos del sensor (como picos de ruido, interferencia por edificios en GPS o \"anomalías\") arruinen la estimación, se calcula la <strong>distancia de Mahalanobis</strong> sobre el vector de innovación $\tilde{z}_k$:</p>
+  <div class="math-block">$$d_M^2 = \\tilde{z}_k^\\top S_k^{-1} \\tilde{z}_k$$</div>
+  <p>Bajo la hipótesis nula de una medición limpia, $d_M^2$ sigue una distribución $\\chi^2$ con grados de libertad iguales al rango de $H$. Si $d_M^2$ supera un umbral crítico (ej. 3.84 para 1 G.L. o 5.99 para 2 G.L. al 95% de confianza), el filtro cataloga la medición como outlier y la <strong>rechaza por completo</strong>, omitiendo la corrección y apoyándose puramente en la predicción del modelo físico. ¡Pruébelo activando esta compuerta en el menú e inyectando una anomalía de +250 metros!</p>
 </div>`,
 
-`<h3>6. EKF aplicado: estimación de ángulo de péndulo no lineal</h3>
-<p>El filtro de Kalman estándar (KF lineal) asume $f$ y $h$ lineales. El <strong>EKF</strong> maneja no-linealidades linelizando con el Jacobiano en cada paso. Demostración en vivo con un péndulo simple:</p>
-<div class="theory-cols">
-<div class="theory-box">
-<div class="box-label blue">Dinámica real (no lineal)</div>
-<div class="math-block" style="margin:6px 0;font-size:12px">$$\\ddot{\\theta} = -\\frac{g}{L}\\sin(\\theta)$$</div>
-<p style="font-size:11.5px;margin-top:4px">Estado: $x = [\\theta,\\, \\dot{\\theta}]^\\top$. Observación: $z = \\sin(\\theta) + v$. Para ángulos grandes, $\\sin(\\theta) \\neq \\theta$ y el KF lineal diverge.</p>
+`<h3>6. Filtro de Kalman Extendido (EKF) y Sistemas No Lineales</h3>
+<p>Muchos sistemas reales tienen dinámicas no lineales. Para un sistema no lineal discreto:
+$$x_{k+1} = f(x_k, u_k) + w_k, \\qquad z_k = h(x_k) + v_k$$
+El EKF aproxima el sistema linealizándolo localmente alrededor de la estimación actual usando matrices Jacobianas:</p>
+<div class="math-block">
+$$F_k = \\left. \\frac{\\partial f}{\\partial x} \\right|_{\\hat{x}_{k|k}}, \\qquad H_k = \\left. \\frac{\\partial h}{\\partial x} \\right|_{\\hat{x}_{k|k-1}}$$
 </div>
-<div class="theory-box">
-<div class="box-label amber">Jacobiano del EKF</div>
-<div class="math-block" style="margin:6px 0;font-size:12px">$$F_k = \\begin{bmatrix}1 & \\Delta t \\\\ -\\frac{g}{L}\\cos(\\theta_k)\\Delta t & 1\\end{bmatrix}$$</div>
-<div class="math-block" style="margin:6px 0;font-size:12px">$$H_k = \\begin{bmatrix}\\cos(\\theta_k) & 0\\end{bmatrix}$$</div>
+<p>En este ejemplo simulamos un <strong>péndulo simple no lineal</strong> con estado $x = [\\theta, \\omega]^\\top$ (ángulo y velocidad angular) y medición no lineal $z = \\sin(\\theta)$ (proyección horizontal):</p>
+<div class="math-block">
+$$\\dot{\\theta} = \\omega, \\quad \\dot{\\omega} = -\\frac{g}{L}\\sin(\\theta)$$
 </div>
+<div class="info-box">
+La línea discontinua blanca representa el ángulo real del péndulo. La línea roja discontinua es un Filtro de Kalman Lineal convencional (LKF) que asume la aproximación de ángulos pequeños ($\\sin\\theta \\approx \\theta$). La línea azul continua es el Filtro de Kalman Extendido (EKF). Observe cómo ante oscilaciones de gran amplitud (ej. inicializado en 0.8 rad $\\approx 46^\\circ$), el LKF diverge o subestima la amplitud y período, mientras que el EKF realiza un seguimiento óptimo.
 </div>
+
 <div class="ekf-demo">
-<div class="ekf-demo-header">
-  <div class="ekf-demo-title">Simulación en vivo: EKF vs KF lineal — péndulo θ₀ ≈ 46°</div>
-  <div class="ekf-controls">
-    <label>θ₀ <input type="range" id="ekf-th0" min="10" max="170" value="80" style="width:80px"> <span id="ekf-th0-lbl">80°</span></label>
-    <button class="btn-reset" style="padding:4px 10px;font-size:11px" onclick="resetEKF()">↺ Reiniciar</button>
+  <div class="ekf-demo-header">
+    <div class="ekf-demo-title">Péndulo no lineal: EKF vs LKF</div>
+    <div class="chart-legend" style="margin-right: 20px">
+      <div class="legend-item"><div class="legend-line" style="border-top:2px dashed rgba(255,255,255,.5);background:none"></div>Real</div>
+      <div class="legend-item"><div class="legend-line" style="border-top:2px dashed var(--red);background:none"></div>LKF (Lineal)</div>
+      <div class="legend-item"><div class="legend-line" style="background:var(--blue)"></div>EKF (Extendido)</div>
+    </div>
+    <div class="ekf-controls">
+      <label>R (Ruido): <input type="range" id="ekf-sl-r" min="1" max="1000" value="500"></label>
+      <span id="ekf-lbl-r" style="font-family:var(--mono); font-size:11px; min-width:45px; text-align:right">0.0500</span>
+      <button class="btn-reset" id="ekf-btn-reset" style="padding: 4px 10px; font-size: 10px; width: auto">Reiniciar</button>
+    </div>
   </div>
-</div>
-<div style="padding:8px 12px 4px">
-  <div class="chart-legend" style="gap:16px">
-    <div class="legend-item"><div class="legend-line" style="border-top:2px dashed rgba(255,255,255,.5);background:none"></div>Real θ(t)</div>
-    <div class="legend-item"><div class="legend-line" style="background:var(--blue)"></div>EKF (no lineal)</div>
-    <div class="legend-item"><div class="legend-line" style="background:var(--red);border-top:2px dashed var(--red);background:none"></div>KF lineal (diverge)</div>
+  <div class="canvas-area" style="height:200px;width:100%">
+    <canvas id="cv-ekf" width="600" height="200" style="width:100%;height:200px;display:block"></canvas>
   </div>
-</div>
-<div style="padding:0 12px 12px">
-  <canvas id="cv-ekf" width="600" height="200" style="width:100%;height:200px;display:block;background:var(--bg2);border-radius:6px"></canvas>
-</div>
-</div>
-<p style="margin-top:10px">El KF lineal (línea roja) usa la aproximación $\\sin(\\theta) \\approx \\theta$ — válida solo para ángulos pequeños. Para ángulos grandes diverge progresivamente. El EKF (línea azul) propaga el Jacobiano exacto en cada paso y sigue la trayectoria real correctamente.</p>
-<div class="info-box">ℹ Para no-linealidades más severas o distribuciones no gaussianas, el <strong>UKF</strong> propaga sigma-points sin calcular jacobianos, y el <strong>Particle Filter</strong> representa la distribución completa mediante muestras ponderadas.</div>`
+</div>`
 ];
 
-let currentTab=0;
-function setTab(i){
-  currentTab=i;
-  document.getElementById('theory-body').innerHTML=THEORY[i];
-  document.querySelectorAll('.theory-tab').forEach((b,j)=>b.classList.toggle('active',j===i));
-  if(window.renderMathInElement)renderMathInElement(document.getElementById('theory-body'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});
-  // Start EKF demo if on tab 5
-  if(i===5){
-    if(!ekfSim)initEKF();
-    if(!ekfInterval)ekfInterval=setInterval(ekfStep,50);
-    document.getElementById('ekf-th0').addEventListener('input',e=>{
-      document.getElementById('ekf-th0-lbl').textContent=e.target.value+'°';
+function renderMath(element) {
+  if (window.renderMathInElement) {
+    window.renderMathInElement(element, {
+      delimiters: [
+        {left: '$$', right: '$$', display: true},
+        {left: '$', right: '$', display: false}
+      ],
+      throwOnError: false
     });
-  } else {
-    if(ekfInterval){clearInterval(ekfInterval);ekfInterval=null;}
   }
 }
 
-function resetEKF(){
-  let th0=(+document.getElementById('ekf-th0').value)*Math.PI/180;
-  initEKF();
-  ekfSim.x=[[th0],[0]];
-  ekfSim.lkf_x=[[th0],[0]];
+function setTab(idx){
+  let tabs = document.querySelectorAll('.theory-tab');
+  tabs.forEach((t, i) => t.classList.toggle('active', i === idx));
+  
+  if(ekfInterval) {
+    clearInterval(ekfInterval);
+    ekfInterval = null;
+  }
+  
+  let body = document.getElementById('theory-body');
+  body.innerHTML = THEORY[idx];
+  
+  renderMath(body);
+  
+  if (idx === 5) {
+    initEKF();
+    setupEKFControls();
+    ekfInterval = setInterval(ekfStep, 50);
+  }
 }
 
-// ─── BOOT ───
-window.addEventListener('load',()=>{
+// ─── INITIALIZATION ───
+window.addEventListener('DOMContentLoaded', () => {
   initSim();
-  document.getElementById('desc').innerHTML=PRESETS[0];
+  document.getElementById('sel-preset').value = "0";
+  document.getElementById('desc').innerHTML = PRESETS[0];
+  
+  setupChartTooltip('wrap-innov', 'tt-innov');
+  setupChartTooltip('wrap-kgain', 'tt-kgain');
+  
+  setInterval(step, 50);
+});
+
+window.addEventListener('load', () => {
+  renderMath(document.getElementById('desc'));
   setTab(0);
-  setupChartTooltip('wrap-innov','tt-innov');
-  setupChartTooltip('wrap-kgain','tt-kgain');
-  requestAnimationFrame(()=>requestAnimationFrame(()=>setInterval(step,50)));
 });
 </script>
 </body>
