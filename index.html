@@ -420,8 +420,8 @@
                         <div class="legend-item"><div class="legend-line" style="background:var(--blue);opacity:.3;height:10px"></div>Región 3σ</div>
                     </div>
                 </div>
-                <div class="canvas-area" style="height:290px">
-                    <canvas id="cv-main"></canvas>
+                <div class="canvas-area" style="height:290px;width:100%">
+                    <canvas id="cv-main" width="800" height="290" style="width:100%;height:290px;display:block"></canvas>
                 </div>
             </div>
 
@@ -432,8 +432,8 @@
                     <div class="chart-header">
                         <div class="chart-title">Error de innovación $z_k - H\hat{x}_k^-$</div>
                     </div>
-                    <div class="canvas-area" style="height:130px">
-                        <canvas id="cv-innov"></canvas>
+                    <div class="canvas-area" style="height:130px;width:100%">
+                        <canvas id="cv-innov" width="400" height="130" style="width:100%;height:130px;display:block"></canvas>
                     </div>
                 </div>
 
@@ -446,8 +446,8 @@
                             <div class="legend-item"><div class="legend-line" style="background:var(--amber)"></div>K[vel]</div>
                         </div>
                     </div>
-                    <div class="canvas-area" style="height:130px">
-                        <canvas id="cv-kgain"></canvas>
+                    <div class="canvas-area" style="height:130px;width:100%">
+                        <canvas id="cv-kgain" width="400" height="130" style="width:100%;height:130px;display:block"></canvas>
                     </div>
                 </div>
 
@@ -693,17 +693,22 @@ function updateMatrices() {
 // ─────────────────────────────────────────────
 function setupCanvas(id, h) {
     let cv = document.getElementById(id);
-    let dpr = window.devicePixelRatio||1;
-    let rect = cv.parentElement.getBoundingClientRect();
-    if(cv.width !== Math.round(rect.width*dpr) || cv.height !== h*dpr) {
-        cv.width = Math.round(rect.width*dpr);
-        cv.height = h*dpr;
-        cv.style.width='100%'; cv.style.height=h+'px';
+    let dpr = window.devicePixelRatio || 1;
+    // Use offsetWidth as fallback when getBoundingClientRect returns 0 (iframe init)
+    let W = cv.parentElement.getBoundingClientRect().width || cv.parentElement.offsetWidth || 600;
+    let wPx = Math.round(W * dpr);
+    let hPx = Math.round(h * dpr);
+    if (cv.width !== wPx || cv.height !== hPx) {
+        cv.width  = wPx;
+        cv.height = hPx;
+        cv.style.width  = W + 'px';
+        cv.style.height = h + 'px';
     }
     let ctx = cv.getContext('2d');
-    ctx.scale(dpr,dpr);
-    ctx.clearRect(0,0,rect.width,h);
-    return { ctx, W:rect.width, H:h };
+    // Reset transform completely each frame — avoids scale accumulation
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, W, h);
+    return { ctx, W, H: h };
 }
 
 function grid(ctx, W, H, color='#17171b') {
@@ -962,7 +967,10 @@ window.addEventListener('load', ()=>{
     initSim();
     document.getElementById('desc').innerHTML = PRESETS[0];
     setTab(0);
-    setInterval(step, 50);
+    // Wait for layout to settle before starting the loop
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+        setInterval(step, 50);
+    }));
 });
 </script>
 </body>
