@@ -1,901 +1,947 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Filtro de Kalman — Laboratorio Avanzado | ASSD · ITBA</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
-    <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
-        onload="renderMathInElement(document.body, {
-            delimiters: [
-                {left: '$$', right: '$$', display: true},
-                {left: '$', right: '$', display: false}
-            ],
-            throwOnError: false
-        });"></script>
-    <style>
-        *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-
-        :root {
-            --bg: #000;
-            --bg1: #0a0a0b;
-            --bg2: #111113;
-            --bg3: #1a1a1d;
-            --bg4: #222226;
-            --border: rgba(255,255,255,0.08);
-            --border2: rgba(255,255,255,0.12);
-            --text: #f0f0f2;
-            --text2: #9a9aa0;
-            --text3: #5a5a62;
-            --blue: #2f80ed;
-            --blue-dim: rgba(47,128,237,0.15);
-            --green: #27ae60;
-            --green-dim: rgba(39,174,96,0.15);
-            --amber: #e67e22;
-            --amber-dim: rgba(230,126,34,0.15);
-            --red: #e74c3c;
-            --red-dim: rgba(231,76,60,0.15);
-            --sky: #56b6c2;
-            --radius: 14px;
-            --radius-sm: 8px;
-            --mono: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
-        }
-
-        body {
-            background: var(--bg);
-            color: var(--text);
-            font-family: -apple-system, 'SF Pro Display', BlinkMacSystemFont, 'Segoe UI', sans-serif;
-            font-size: 13px;
-            line-height: 1.5;
-            -webkit-font-smoothing: antialiased;
-            min-height: 100vh;
-            display: flex;
-            flex-direction: column;
-            gap: 0;
-        }
-
-        /* ── Scrollbar ── */
-        ::-webkit-scrollbar { width: 6px; height: 6px; }
-        ::-webkit-scrollbar-track { background: transparent; }
-        ::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
-
-        /* ── Layout ── */
-        .page { max-width: 1440px; margin: 0 auto; width: 100%; padding: 20px 24px 32px; display: flex; flex-direction: column; gap: 18px; }
-
-        /* ── Header ── */
-        header { display: flex; justify-content: space-between; align-items: flex-end; border-bottom: 1px solid var(--border); padding-bottom: 14px; gap: 12px; flex-wrap: wrap; }
-        .header-left { display: flex; flex-direction: column; gap: 6px; }
-        .eyebrow { display: flex; align-items: center; gap: 10px; }
-        .badge { font-size: 10px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; padding: 3px 8px; border-radius: 20px; border: 1px solid var(--border2); color: var(--text2); }
-        .live-dot { display: flex; align-items: center; gap: 5px; font-size: 11px; color: #2ecc71; font-weight: 500; }
-        .live-dot::before { content: ''; display: block; width: 7px; height: 7px; border-radius: 50%; background: #2ecc71; animation: pulse 1.8s ease-in-out infinite; }
-        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
-        h1 { font-size: 22px; font-weight: 700; letter-spacing: -0.02em; color: var(--text); }
-        .header-right { text-align: right; font-size: 11px; color: var(--text3); font-family: var(--mono); line-height: 1.8; }
-        .header-right strong { color: var(--blue); font-weight: 500; }
-
-        /* ── Main grid ── */
-        .main-grid { display: grid; grid-template-columns: 340px 1fr; gap: 18px; align-items: start; }
-        @media (max-width: 1024px) { .main-grid { grid-template-columns: 1fr; } }
-
-        /* ── Panel glass ── */
-        .glass { background: rgba(16,16,20,0.7); backdrop-filter: blur(16px); border: 1px solid var(--border); border-radius: var(--radius); }
-
-        /* ── Config panel ── */
-        .config-panel { display: flex; flex-direction: column; gap: 14px; padding: 18px; max-height: 86vh; overflow-y: auto; }
-        .section-title { font-size: 11px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); margin-bottom: 4px; }
-
-        select, .pill-select {
-            width: 100%; background: var(--bg3); color: var(--text);
-            border: 1px solid var(--border2); border-radius: var(--radius-sm);
-            padding: 9px 12px; font-size: 12px; font-weight: 500;
-            cursor: pointer; appearance: none;
-            background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235a5a62' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
-            background-repeat: no-repeat; background-position: right 10px center;
-            transition: border-color 0.15s;
-        }
-        select:focus { outline: none; border-color: var(--blue); }
-
-        .scenario-desc {
-            background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm);
-            padding: 11px 13px; font-size: 11.5px; line-height: 1.65; color: var(--text2);
-            min-height: 72px;
-        }
-        .scenario-desc strong { color: var(--text); }
-
-        .divider { border: none; border-top: 1px solid var(--border); }
-
-        /* ── Sliders ── */
-        .slider-group { display: flex; flex-direction: column; gap: 10px; }
-        .slider-row { display: flex; flex-direction: column; gap: 5px; }
-        .slider-label { display: flex; justify-content: space-between; align-items: center; }
-        .slider-name { font-size: 11.5px; color: var(--text2); }
-        .slider-name em { font-style: italic; }
-        .slider-value { font-family: var(--mono); font-size: 11px; background: var(--bg4); color: var(--text); padding: 2px 7px; border-radius: 5px; white-space: nowrap; }
-        input[type=range] {
-            width: 100%; height: 3px; appearance: none; background: var(--bg4);
-            border-radius: 2px; cursor: pointer; outline: none;
-        }
-        input[type=range]::-webkit-slider-thumb { appearance: none; width: 14px; height: 14px; border-radius: 50%; background: var(--blue); cursor: pointer; }
-        input[type=range].green::-webkit-slider-thumb { background: var(--green); }
-        input[type=range].amber::-webkit-slider-thumb { background: var(--amber); }
-        input[type=range].red::-webkit-slider-thumb { background: var(--red); }
-
-        /* ── Checkboxes ── */
-        .toggle-list { display: flex; flex-direction: column; gap: 7px; }
-        .toggle-item {
-            display: flex; align-items: flex-start; gap: 10px;
-            background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm);
-            padding: 9px 11px; cursor: pointer; transition: border-color 0.15s;
-        }
-        .toggle-item:hover { border-color: var(--border2); }
-        .toggle-item input[type=checkbox] { margin-top: 2px; width: 14px; height: 14px; accent-color: var(--blue); cursor: pointer; flex-shrink: 0; }
-        .toggle-text .t1 { font-size: 12px; font-weight: 500; color: var(--text); }
-        .toggle-text .t2 { font-size: 10.5px; color: var(--text3); margin-top: 1px; }
-
-        /* ── Buttons ── */
-        .btn-danger {
-            width: 100%; padding: 10px; border-radius: var(--radius-sm);
-            background: var(--red-dim); color: var(--red); border: 1px solid rgba(231,76,60,0.25);
-            font-size: 11.5px; font-weight: 600; cursor: pointer; letter-spacing: 0.04em;
-            text-transform: uppercase; transition: all 0.15s;
-        }
-        .btn-danger:hover { background: rgba(231,76,60,0.22); }
-        .btn-danger:active { transform: scale(0.98); }
-        .btn-reset {
-            width: 100%; padding: 9px; border-radius: var(--radius-sm);
-            background: var(--bg3); color: var(--text2); border: 1px solid var(--border2);
-            font-size: 11.5px; font-weight: 500; cursor: pointer; transition: all 0.15s;
-        }
-        .btn-reset:hover { background: var(--bg4); color: var(--text); }
-
-        /* ── Right column ── */
-        .right-col { display: flex; flex-direction: column; gap: 14px; }
-
-        /* ── Metrics row ── */
-        .metrics-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; }
-        .metric-card {
-            background: var(--bg1); border: 1px solid var(--border); border-radius: var(--radius-sm);
-            padding: 10px 13px; display: flex; flex-direction: column; gap: 3px;
-        }
-        .metric-label { font-size: 10px; font-weight: 600; letter-spacing: 0.06em; text-transform: uppercase; color: var(--text3); }
-        .metric-value { font-family: var(--mono); font-size: 16px; font-weight: 700; }
-        .metric-value.blue { color: var(--blue); }
-        .metric-value.green { color: var(--green); }
-        .metric-value.amber { color: var(--amber); }
-        .metric-value.sky { color: var(--sky); }
-
-        /* ── Charts ── */
-        .chart-wrapper {
-            border: 1px solid var(--border); border-radius: var(--radius);
-            background: var(--bg1); display: flex; flex-direction: column; overflow: hidden;
-        }
-        .chart-header {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 11px 14px 8px; border-bottom: 1px solid var(--border);
-            flex-wrap: wrap; gap: 8px;
-        }
-        .chart-title { font-size: 10.5px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text3); }
-        .chart-legend { display: flex; gap: 14px; flex-wrap: wrap; }
-        .legend-item { display: flex; align-items: center; gap: 5px; font-size: 10.5px; color: var(--text2); }
-        .legend-line { width: 16px; height: 2px; border-radius: 1px; }
-        .legend-dot { width: 7px; height: 7px; border-radius: 50%; }
-        .canvas-area { position: relative; width: 100%; }
-        canvas { display: block; width: 100% !important; }
-
-        /* Chart tabs */
-        .chart-tabs { display: flex; gap: 2px; padding: 8px 14px 0; }
-        .ctab {
-            padding: 5px 12px; border-radius: var(--radius-sm) var(--radius-sm) 0 0;
-            font-size: 11px; font-weight: 500; cursor: pointer; border: none;
-            background: transparent; color: var(--text3); transition: all 0.15s;
-            border-bottom: 2px solid transparent;
-        }
-        .ctab.active { color: var(--text); border-bottom-color: var(--blue); }
-        .ctab:hover:not(.active) { color: var(--text2); }
-
-        /* ── Bottom row ── */
-        .bottom-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
-        @media (max-width: 900px) { .bottom-row { grid-template-columns: 1fr; } }
-
-        /* ── Matrix display ── */
-        .matrix-panel { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-        .matrix-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; flex: 1; }
-        .mat-card {
-            background: var(--bg2); border: 1px solid var(--border); border-radius: var(--radius-sm);
-            padding: 10px; display: flex; flex-direction: column; justify-content: space-between; gap: 6px;
-            position: relative;
-        }
-        .mat-label { font-size: 9.5px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; color: var(--text3); }
-        .mat-values { font-family: var(--mono); font-size: 10.5px; line-height: 1.7; text-align: center; white-space: pre; font-weight: 600; }
-        .mat-footer { font-size: 9px; color: var(--text3); text-align: center; border-top: 1px solid var(--border); padding-top: 5px; }
-        .mat-values.blue { color: var(--sky); }
-        .mat-values.green { color: var(--green); }
-        .mat-values.amber { color: var(--amber); }
-
-        /* Tooltip on hover */
-        .mat-tooltip {
-            display: none; position: absolute; bottom: calc(100% + 6px); left: 0; width: 200px;
-            background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-sm);
-            padding: 8px 10px; font-size: 10.5px; color: var(--text2); line-height: 1.55; z-index: 20;
-            pointer-events: none;
-        }
-        .mat-card:hover .mat-tooltip { display: block; }
-
-        /* ── Theory section ── */
-        .theory-section { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
-        .theory-header { display: flex; justify-content: space-between; align-items: center; padding: 14px 18px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 10px; }
-        .theory-tabs { display: flex; gap: 4px; flex-wrap: wrap; }
-        .theory-tab {
-            padding: 5px 12px; border-radius: var(--radius-sm);
-            font-size: 11px; font-weight: 500; cursor: pointer; border: 1px solid var(--border);
-            background: var(--bg3); color: var(--text2); transition: all 0.15s;
-        }
-        .theory-tab.active { background: var(--blue); color: #fff; border-color: var(--blue); }
-        .theory-tab:hover:not(.active) { color: var(--text); border-color: var(--border2); }
-        .theory-body {
-            padding: 18px 20px; font-size: 12.5px; line-height: 1.75; color: var(--text2);
-            background: var(--bg1); min-height: 180px;
-        }
-        .theory-body h3 { font-size: 13.5px; font-weight: 600; color: var(--text); margin-bottom: 10px; }
-        .theory-body p { margin-bottom: 10px; }
-        .theory-body p:last-child { margin-bottom: 0; }
-        .math-block {
-            background: var(--bg3); border: 1px solid var(--border2); border-radius: var(--radius-sm);
-            padding: 10px 14px; margin: 10px 0; overflow-x: auto; font-size: 13px;
-        }
-        .theory-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin: 10px 0; }
-        @media (max-width: 640px) { .theory-cols { grid-template-columns: 1fr; } }
-        .theory-box {
-            background: var(--bg3); border: 1px solid var(--border); border-radius: var(--radius-sm); padding: 12px;
-        }
-        .theory-box .box-label { font-size: 10px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; margin-bottom: 6px; }
-        .theory-box .box-label.blue { color: var(--sky); }
-        .theory-box .box-label.amber { color: var(--amber); }
-        .theory-body ul { padding-left: 18px; display: flex; flex-direction: column; gap: 5px; }
-        .theory-body li { font-size: 12px; }
-        .warn-box {
-            background: var(--amber-dim); border: 1px solid rgba(230,126,34,0.25); border-radius: var(--radius-sm);
-            padding: 9px 12px; margin-top: 10px; font-size: 11.5px; color: var(--amber); line-height: 1.55;
-        }
-        .tag { display: inline-block; font-size: 10px; font-weight: 600; padding: 2px 6px; border-radius: 4px; }
-        .tag.blue { background: var(--blue-dim); color: var(--blue); }
-        .tag.green { background: var(--green-dim); color: var(--green); }
-        .tag.red { background: var(--red-dim); color: var(--red); }
-
-        /* footer */
-        footer { border-top: 1px solid var(--border); padding: 14px 24px; text-align: center; font-size: 10.5px; color: var(--text3); font-family: var(--mono); }
-    </style>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Filtro de Kalman — Laboratorio Avanzado | ASSD · ITBA</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+<script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"
+    onload="renderMathInElement(document.body,{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false})"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{
+  --bg:#000;--bg1:#0a0a0b;--bg2:#111113;--bg3:#1a1a1d;--bg4:#222226;
+  --border:rgba(255,255,255,0.08);--border2:rgba(255,255,255,0.13);
+  --text:#f0f0f2;--text2:#9a9aa0;--text3:#5a5a62;
+  --blue:#2f80ed;--blue-dim:rgba(47,128,237,0.14);
+  --green:#27ae60;--green-dim:rgba(39,174,96,0.14);
+  --amber:#e67e22;--amber-dim:rgba(230,126,34,0.14);
+  --red:#e74c3c;--red-dim:rgba(231,76,60,0.14);
+  --sky:#56b6c2;--purple:#9b59b6;
+  --radius:14px;--radius-sm:8px;
+  --mono:'JetBrains Mono','Fira Code','Consolas',monospace
+}
+body{background:var(--bg);color:var(--text);font-family:-apple-system,'SF Pro Display',BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:13px;line-height:1.5;-webkit-font-smoothing:antialiased;min-height:100vh}
+::-webkit-scrollbar{width:6px;height:6px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--bg4);border-radius:3px}
+.page{max-width:1440px;margin:0 auto;width:100%;padding:20px 24px 32px;display:flex;flex-direction:column;gap:18px}
+/* Header */
+header{display:flex;justify-content:space-between;align-items:flex-end;border-bottom:1px solid var(--border);padding-bottom:14px;gap:12px;flex-wrap:wrap}
+.header-left{display:flex;flex-direction:column;gap:6px}
+.eyebrow{display:flex;align-items:center;gap:10px}
+.badge{font-size:10px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;padding:3px 8px;border-radius:20px;border:1px solid var(--border2);color:var(--text2)}
+.live-dot{display:flex;align-items:center;gap:5px;font-size:11px;color:#2ecc71;font-weight:500}
+.live-dot::before{content:'';display:block;width:7px;height:7px;border-radius:50%;background:#2ecc71;animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.5;transform:scale(.8)}}
+h1{font-size:22px;font-weight:700;letter-spacing:-.02em}
+.header-right{text-align:right;font-size:11px;color:var(--text3);font-family:var(--mono);line-height:1.8}
+.header-right strong{color:var(--blue);font-weight:500}
+/* Grid */
+.main-grid{display:grid;grid-template-columns:340px 1fr;gap:18px;align-items:start}
+@media(max-width:1024px){.main-grid{grid-template-columns:1fr}}
+.glass{background:rgba(16,16,20,.7);backdrop-filter:blur(16px);border:1px solid var(--border);border-radius:var(--radius)}
+/* Config panel */
+.config-panel{display:flex;flex-direction:column;gap:14px;padding:18px;max-height:90vh;overflow-y:auto}
+.section-title{font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3);margin-bottom:4px}
+select{width:100%;background:var(--bg3);color:var(--text);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:9px 12px;font-size:12px;font-weight:500;cursor:pointer;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%235a5a62' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;transition:border-color .15s}
+select:focus{outline:none;border-color:var(--blue)}
+.scenario-desc{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:11px 13px;font-size:11.5px;line-height:1.65;color:var(--text2);min-height:72px}
+.scenario-desc strong{color:var(--text)}
+.divider{border:none;border-top:1px solid var(--border)}
+/* Sliders */
+.slider-group{display:flex;flex-direction:column;gap:10px}
+.slider-row{display:flex;flex-direction:column;gap:5px}
+.slider-label{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.slider-name{font-size:11.5px;color:var(--text2);flex:1}
+.slider-name em{font-style:italic}
+.slider-value{font-family:var(--mono);font-size:11px;background:var(--bg4);color:var(--text);padding:2px 7px;border-radius:5px;white-space:nowrap;min-width:56px;text-align:right}
+input[type=range]{width:100%;height:3px;appearance:none;background:var(--bg4);border-radius:2px;cursor:pointer;outline:none}
+input[type=range]::-webkit-slider-thumb{appearance:none;width:14px;height:14px;border-radius:50%;background:var(--blue);cursor:pointer}
+input[type=range].green::-webkit-slider-thumb{background:var(--green)}
+input[type=range].amber::-webkit-slider-thumb{background:var(--amber)}
+input[type=range].red::-webkit-slider-thumb{background:var(--red)}
+/* Checkboxes */
+.toggle-list{display:flex;flex-direction:column;gap:7px}
+.toggle-item{display:flex;align-items:flex-start;gap:10px;background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:9px 11px;cursor:pointer;transition:border-color .15s}
+.toggle-item:hover{border-color:var(--border2)}
+.toggle-item input[type=checkbox]{margin-top:2px;width:14px;height:14px;accent-color:var(--blue);cursor:pointer;flex-shrink:0}
+.toggle-text .t1{font-size:12px;font-weight:500;color:var(--text)}
+.toggle-text .t2{font-size:10.5px;color:var(--text3);margin-top:1px}
+/* Buttons */
+.btn-danger{width:100%;padding:10px;border-radius:var(--radius-sm);background:var(--red-dim);color:var(--red);border:1px solid rgba(231,76,60,.25);font-size:11.5px;font-weight:600;cursor:pointer;letter-spacing:.04em;text-transform:uppercase;transition:all .15s}
+.btn-danger:hover{background:rgba(231,76,60,.22)}
+.btn-danger:active{transform:scale(.98)}
+.btn-reset{width:100%;padding:9px;border-radius:var(--radius-sm);background:var(--bg3);color:var(--text2);border:1px solid var(--border2);font-size:11.5px;font-weight:500;cursor:pointer;transition:all .15s}
+.btn-reset:hover{background:var(--bg4);color:var(--text)}
+/* Right column */
+.right-col{display:flex;flex-direction:column;gap:14px}
+/* Metric cards */
+.metrics-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}
+.metric-card{background:var(--bg1);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 13px;display:flex;flex-direction:column;gap:3px}
+.metric-label{font-size:10px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--text3)}
+.metric-value{font-family:var(--mono);font-size:16px;font-weight:700}
+.metric-value.blue{color:var(--blue)}.metric-value.green{color:var(--green)}.metric-value.amber{color:var(--amber)}.metric-value.sky{color:var(--sky)}
+/* Charts */
+.chart-wrapper{border:1px solid var(--border);border-radius:var(--radius);background:var(--bg1);display:flex;flex-direction:column;overflow:hidden;position:relative}
+.chart-header{display:flex;justify-content:space-between;align-items:center;padding:10px 14px 8px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:8px}
+.chart-title{font-size:10.5px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:var(--text3)}
+.chart-legend{display:flex;gap:14px;flex-wrap:wrap}
+.legend-item{display:flex;align-items:center;gap:5px;font-size:10.5px;color:var(--text2)}
+.legend-line{width:16px;height:2px;border-radius:1px}
+.legend-dot{width:7px;height:7px;border-radius:50%}
+.canvas-area{position:relative;width:100%}
+canvas{display:block;width:100%!important}
+/* Chart tabs */
+.chart-tabs{display:flex;gap:2px;padding:8px 14px 0}
+.ctab{padding:5px 12px;border-radius:var(--radius-sm) var(--radius-sm) 0 0;font-size:11px;font-weight:500;cursor:pointer;border:none;background:transparent;color:var(--text3);transition:all .15s;border-bottom:2px solid transparent}
+.ctab.active{color:var(--text);border-bottom-color:var(--blue)}
+.ctab:hover:not(.active){color:var(--text2)}
+/* Bottom row */
+.bottom-row{display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px}
+@media(max-width:900px){.bottom-row{grid-template-columns:1fr}}
+/* Matrix display */
+.matrix-panel{padding:14px;display:flex;flex-direction:column;gap:10px}
+.matrix-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;flex:1}
+.mat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px;display:flex;flex-direction:column;justify-content:space-between;gap:6px;position:relative}
+.mat-label{font-size:9.5px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;color:var(--text3)}
+.mat-values{font-family:var(--mono);font-size:10px;line-height:1.7;text-align:center;white-space:pre;font-weight:600}
+.mat-footer{font-size:9px;color:var(--text3);text-align:center;border-top:1px solid var(--border);padding-top:5px}
+.mat-values.blue{color:var(--sky)}.mat-values.green{color:var(--green)}.mat-values.amber{color:var(--amber)}
+.mat-tooltip{display:none;position:absolute;bottom:calc(100% + 6px);left:0;width:210px;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:8px 10px;font-size:10.5px;color:var(--text2);line-height:1.55;z-index:20;pointer-events:none}
+.mat-card:hover .mat-tooltip{display:block}
+/* Chart tooltip overlay */
+.chart-tooltip{position:absolute;pointer-events:none;background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:10px 13px;font-size:11.5px;color:var(--text2);line-height:1.6;max-width:260px;z-index:30;display:none;box-shadow:0 4px 20px rgba(0,0,0,.5)}
+.chart-tooltip strong{color:var(--text);display:block;margin-bottom:4px;font-size:12px}
+.chart-tooltip .math-inline{font-family:var(--mono);font-size:10.5px;color:var(--sky)}
+/* Theory section */
+.theory-section{border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
+.theory-header{display:flex;justify-content:space-between;align-items:center;padding:14px 18px;border-bottom:1px solid var(--border);flex-wrap:wrap;gap:10px}
+.theory-tabs{display:flex;gap:4px;flex-wrap:wrap}
+.theory-tab{padding:5px 12px;border-radius:var(--radius-sm);font-size:11px;font-weight:500;cursor:pointer;border:1px solid var(--border);background:var(--bg3);color:var(--text2);transition:all .15s}
+.theory-tab.active{background:var(--blue);color:#fff;border-color:var(--blue)}
+.theory-tab:hover:not(.active){color:var(--text);border-color:var(--border2)}
+.theory-body{padding:18px 20px;font-size:12.5px;line-height:1.75;color:var(--text2);background:var(--bg1);min-height:200px}
+.theory-body h3{font-size:13.5px;font-weight:600;color:var(--text);margin-bottom:10px}
+.theory-body p{margin-bottom:10px}
+.theory-body p:last-child{margin-bottom:0}
+.math-block{background:var(--bg3);border:1px solid var(--border2);border-radius:var(--radius-sm);padding:10px 14px;margin:10px 0;overflow-x:auto;font-size:13px}
+.theory-cols{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin:10px 0}
+@media(max-width:640px){.theory-cols{grid-template-columns:1fr}}
+.theory-box{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px}
+.theory-box .box-label{font-size:10px;font-weight:700;letter-spacing:.07em;text-transform:uppercase;margin-bottom:6px}
+.theory-box .box-label.blue{color:var(--sky)}.theory-box .box-label.amber{color:var(--amber)}.theory-box .box-label.green{color:var(--green)}.theory-box .box-label.purple{color:var(--purple)}
+.theory-body ul{padding-left:18px;display:flex;flex-direction:column;gap:5px}
+.theory-body li{font-size:12px}
+.warn-box{background:var(--amber-dim);border:1px solid rgba(230,126,34,.25);border-radius:var(--radius-sm);padding:9px 12px;margin-top:10px;font-size:11.5px;color:var(--amber);line-height:1.55}
+.info-box{background:var(--blue-dim);border:1px solid rgba(47,128,237,.25);border-radius:var(--radius-sm);padding:9px 12px;margin-top:10px;font-size:11.5px;color:#7ab8f5;line-height:1.55}
+.tag{display:inline-block;font-size:10px;font-weight:600;padding:2px 6px;border-radius:4px}
+.tag.blue{background:var(--blue-dim);color:var(--blue)}.tag.green{background:var(--green-dim);color:var(--green)}.tag.red{background:var(--red-dim);color:var(--red)}.tag.amber{background:var(--amber-dim);color:var(--amber)}
+/* EKF demo */
+.ekf-demo{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);margin-top:10px;overflow:hidden}
+.ekf-demo-header{padding:10px 14px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.ekf-demo-title{font-size:11px;font-weight:600;color:var(--text);text-transform:uppercase;letter-spacing:.05em}
+.ekf-controls{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.ekf-controls label{font-size:11px;color:var(--text2)}
+.ekf-controls input[type=range]{width:100px}
+footer{border-top:1px solid var(--border);padding:14px 24px;text-align:center;font-size:10.5px;color:var(--text3);font-family:var(--mono)}
+/* IMU mode indicator */
+.imu-badge{display:none;font-size:9px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;padding:2px 6px;border-radius:4px;background:rgba(86,182,194,.15);color:var(--sky);border:1px solid rgba(86,182,194,.3)}
+.imu-badge.visible{display:inline-block}
+</style>
 </head>
 <body>
 <div class="page">
 
-    <!-- ── HEADER ── -->
-    <header>
-        <div class="header-left">
-            <div class="eyebrow">
-                <span class="badge">Estocástica &amp; Control</span>
-                <span class="live-dot">Simulación en vivo</span>
-            </div>
-            <h1>Filtro de Kalman — Laboratorio Avanzado</h1>
-        </div>
-        <div class="header-right">
-            Análisis de Señales y Sistemas Digitales<br>
-            <strong>Instituto Tecnológico de Buenos Aires · ITBA</strong>
-        </div>
-    </header>
+<!-- HEADER -->
+<header>
+  <div class="header-left">
+    <div class="eyebrow">
+      <span class="badge">Estocástica &amp; Control</span>
+      <span class="live-dot">Simulación en vivo</span>
+    </div>
+    <h1>Filtro de Kalman — Laboratorio Avanzado</h1>
+  </div>
+  <div class="header-right">
+    Análisis de Señales y Sistemas Digitales<br>
+    <strong>Instituto Tecnológico de Buenos Aires · ITBA</strong>
+  </div>
+</header>
 
-    <!-- ── MAIN GRID ── -->
-    <div class="main-grid">
+<!-- MAIN GRID -->
+<div class="main-grid">
 
-        <!-- ══ CONFIG PANEL ══ -->
-        <aside class="glass config-panel">
-            <div>
-                <div class="section-title">Perfil de trayectoria</div>
-                <select id="sel-traj">
-                    <option value="0">1. Entrada manual (aceleración variable)</option>
-                    <option value="1">2. Trayectoria senoidal (cambios continuos)</option>
-                    <option value="2">3. Maniobra de frenado brusco de emergencia</option>
-                </select>
-            </div>
-
-            <div>
-                <div class="section-title">Escenario / Preset</div>
-                <select id="sel-preset">
-                    <option value="0">0. Modo libre avanzado</option>
-                    <option value="1">1. Comportamiento estocástico ideal</option>
-                    <option value="2">2. GPS muy ruidoso (confiar en Q)</option>
-                    <option value="3">3. Física ciega (lag por error de modelo)</option>
-                    <option value="4">4. Fusión de sensores óptima (GPS + IMU)</option>
-                    <option value="5">5. Compuerta estadística (rechazo de anomalías)</option>
-                </select>
-                <div class="scenario-desc" id="desc" style="margin-top:8px"></div>
-            </div>
-
-            <hr class="divider">
-
-            <div class="slider-group">
-                <div class="section-title">Parámetros cinemáticos</div>
-
-                <div class="slider-row">
-                    <div class="slider-label">
-                        <span class="slider-name">Aceleración de control <em>u</em></span>
-                        <span class="slider-value" id="lbl-u">0 m/s²</span>
-                    </div>
-                    <input type="range" id="sl-u" min="-40" max="40" value="0">
-                </div>
-
-                <div class="slider-row">
-                    <div class="slider-label">
-                        <span class="slider-name">Ruido de proceso <em>q_scale</em> (diagonal Q)</span>
-                        <span class="slider-value" id="lbl-q">1 000</span>
-                    </div>
-                    <input type="range" class="green" id="sl-q" min="10" max="20000" value="1000">
-                </div>
-
-                <div class="slider-row">
-                    <div class="slider-label">
-                        <span class="slider-name">Varianza GPS <em>R<sub>gps</sub></em> (σ² pos)</span>
-                        <span class="slider-value" id="lbl-rgps">500</span>
-                    </div>
-                    <input type="range" class="amber" id="sl-rgps" min="10" max="5000" value="500">
-                </div>
-
-                <div class="slider-row">
-                    <div class="slider-label">
-                        <span class="slider-name">Varianza IMU <em>R<sub>imu</sub></em> (σ² vel)</span>
-                        <span class="slider-value" id="lbl-rimu">50</span>
-                    </div>
-                    <input type="range" class="red" id="sl-rimu" min="1" max="1000" value="50">
-                </div>
-            </div>
-
-            <hr class="divider">
-
-            <div class="toggle-list">
-                <label class="toggle-item">
-                    <input type="checkbox" id="chk-mismatch">
-                    <div class="toggle-text">
-                        <div class="t1">Física ciega (ocultar <em>u</em> al filtro)</div>
-                        <div class="t2">Invalida la matriz B → lag temporal observable</div>
-                    </div>
-                </label>
-                <label class="toggle-item">
-                    <input type="checkbox" id="chk-imu">
-                    <div class="toggle-text">
-                        <div class="t1">Fusión IMU (sensor de velocidad)</div>
-                        <div class="t2">Expande H a 2 DOF → colapsa la incertidumbre P</div>
-                    </div>
-                </label>
-                <label class="toggle-item">
-                    <input type="checkbox" id="chk-mahal">
-                    <div class="toggle-text">
-                        <div class="t1">Compuerta estadística de Mahalanobis</div>
-                        <div class="t2">Rechaza outliers; umbral χ² a nivel 0.05</div>
-                    </div>
-                </label>
-            </div>
-
-            <div style="display:flex;flex-direction:column;gap:7px;margin-top:auto">
-                <button class="btn-danger" id="btn-anomaly">⚡ Inyectar anomalía de posición (+250 m)</button>
-                <button class="btn-reset" id="btn-reset">↺ Reiniciar simulación</button>
-            </div>
-        </aside>
-
-        <!-- ══ RIGHT COLUMN ══ -->
-        <div class="right-col">
-
-            <!-- Metric cards -->
-            <div class="metrics-row">
-                <div class="metric-card">
-                    <div class="metric-label">RMSE posición</div>
-                    <div class="metric-value blue" id="m-rmse">—</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Innov. media |ε̄|</div>
-                    <div class="metric-value amber" id="m-innov">—</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Tr(P) covarianza</div>
-                    <div class="metric-value sky" id="m-traceP">—</div>
-                </div>
-                <div class="metric-card">
-                    <div class="metric-label">Ganancia K[0]</div>
-                    <div class="metric-value green" id="m-k0">—</div>
-                </div>
-            </div>
-
-            <!-- Main chart -->
-            <div class="chart-wrapper">
-                <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 0;flex-wrap:wrap;gap:8px">
-                    <div class="chart-tabs">
-                        <button class="ctab active" id="tab-pos" onclick="switchChart('pos')">Posición</button>
-                        <button class="ctab" id="tab-vel" onclick="switchChart('vel')">Velocidad</button>
-                    </div>
-                    <div class="chart-legend" id="main-legend">
-                        <div class="legend-item"><div class="legend-line" style="background:#fff;border-top:2px dashed #fff;background:none;border:none;border-top:2px dashed rgba(255,255,255,0.6)"></div>Real</div>
-                        <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>GPS medido</div>
-                        <div class="legend-item"><div class="legend-line" style="background:var(--blue)"></div>Filtro Kalman</div>
-                        <div class="legend-item"><div class="legend-line" style="background:var(--blue);opacity:.3;height:10px"></div>Región 3σ</div>
-                    </div>
-                </div>
-                <div class="canvas-area" style="height:290px;width:100%">
-                    <canvas id="cv-main" width="800" height="290" style="width:100%;height:290px;display:block"></canvas>
-                </div>
-            </div>
-
-            <!-- Bottom row: innovation + K gain + matrices -->
-            <div class="bottom-row">
-                <!-- Innovation -->
-                <div class="chart-wrapper">
-                    <div class="chart-header">
-                        <div class="chart-title">Error de innovación $z_k - H\hat{x}_k^-$</div>
-                    </div>
-                    <div class="canvas-area" style="height:130px;width:100%">
-                        <canvas id="cv-innov" width="400" height="130" style="width:100%;height:130px;display:block"></canvas>
-                    </div>
-                </div>
-
-                <!-- K gain over time -->
-                <div class="chart-wrapper">
-                    <div class="chart-header">
-                        <div class="chart-title">Ganancia de Kalman $K$ (histórico)</div>
-                        <div class="chart-legend">
-                            <div class="legend-item"><div class="legend-line" style="background:var(--green)"></div>K[pos]</div>
-                            <div class="legend-item"><div class="legend-line" style="background:var(--amber)"></div>K[vel]</div>
-                        </div>
-                    </div>
-                    <div class="canvas-area" style="height:130px;width:100%">
-                        <canvas id="cv-kgain" width="400" height="130" style="width:100%;height:130px;display:block"></canvas>
-                    </div>
-                </div>
-
-                <!-- Matrix display -->
-                <div class="glass matrix-panel">
-                    <div class="section-title">Álgebra en tiempo real</div>
-                    <div class="matrix-grid">
-                        <div class="mat-card">
-                            <div class="mat-label" style="color:var(--green)">Q proceso</div>
-                            <div class="mat-values green" id="mat-q"></div>
-                            <div class="mat-footer">Duda física</div>
-                            <div class="mat-tooltip">Covarianza de perturbaciones dinámicas no modeladas. Sus componentes escalan con $q\_scale$.</div>
-                        </div>
-                        <div class="mat-card">
-                            <div class="mat-label" style="color:var(--sky)">P covarianza</div>
-                            <div class="mat-values blue" id="mat-p"></div>
-                            <div class="mat-footer">Margen de duda</div>
-                            <div class="mat-tooltip">Error estimado a posteriori. La diagonal es la varianza de posición y velocidad.</div>
-                        </div>
-                        <div class="mat-card">
-                            <div class="mat-label" style="color:var(--amber)">K ganancia</div>
-                            <div class="mat-values amber" id="mat-k"></div>
-                            <div class="mat-footer">Balanza de pesos</div>
-                            <div class="mat-tooltip">Ganancia óptima de Kalman. Pondera si confiar en el modelo cinemático o en el sensor.</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-
-        </div>
+  <!-- CONFIG PANEL -->
+  <aside class="glass config-panel">
+    <div>
+      <div class="section-title">Perfil de trayectoria</div>
+      <select id="sel-traj">
+        <option value="0">1. Aceleración manual (control directo)</option>
+        <option value="1">2. Senoidal (oscilación continua)</option>
+        <option value="2">3. Frenado brusco de emergencia</option>
+        <option value="3">4. Curva en S (aceleración + freno)</option>
+        <option value="4">5. Impulso de velocidad (escalón)</option>
+        <option value="5">6. Oscilación amortiguada</option>
+      </select>
     </div>
 
-    <!-- ── THEORY SECTION ── -->
-    <div class="theory-section glass">
-        <div class="theory-header">
-            <div>
-                <div class="section-title">Fundamentos teóricos</div>
-            </div>
-            <div class="theory-tabs">
-                <button class="theory-tab active" onclick="setTab(0)">1. Espacio de estados</button>
-                <button class="theory-tab" onclick="setTab(1)">2. Observador de Luenberger</button>
-                <button class="theory-tab" onclick="setTab(2)">3. Enfoque estocástico</button>
-                <button class="theory-tab" onclick="setTab(3)">4. Ecuaciones del filtro</button>
-                <button class="theory-tab" onclick="setTab(4)">5. Divergencia y tuning</button>
-                <button class="theory-tab" onclick="setTab(5)">6. Extensiones (EKF / UKF)</button>
-            </div>
-        </div>
-        <div class="theory-body" id="theory-body"></div>
+    <div>
+      <div class="section-title">Escenario / Preset</div>
+      <select id="sel-preset">
+        <option value="0">0. Modo libre avanzado</option>
+        <option value="1">1. Comportamiento estocástico ideal</option>
+        <option value="2">2. GPS muy ruidoso (confiar en Q)</option>
+        <option value="3">3. Física ciega (lag por error de modelo)</option>
+        <option value="4">4. Fusión óptima GPS + IMU</option>
+        <option value="5">5. Compuerta estadística (Mahalanobis)</option>
+        <option value="6">6. Deriva del sensor (bias acumulativo)</option>
+        <option value="7">7. Q nula — predicción pura sin corrección</option>
+        <option value="8">8. Alta dinámica con fusión IMU</option>
+      </select>
+      <div class="scenario-desc" id="desc" style="margin-top:8px"></div>
     </div>
+
+    <hr class="divider">
+
+    <div class="slider-group">
+      <div class="section-title">Parámetros del filtro</div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="slider-name">Aceleración de control <em>u</em></span>
+          <span class="slider-value" id="lbl-u">0 m/s²</span>
+        </div>
+        <input type="range" id="sl-u" min="-40" max="40" value="0">
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="slider-name">Ruido de proceso <em>q_scale</em></span>
+          <span class="slider-value" id="lbl-q">1 000</span>
+        </div>
+        <input type="range" class="green" id="sl-q" min="1" max="20000" value="1000">
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="slider-name">Varianza GPS <em>R<sub>gps</sub></em></span>
+          <span class="slider-value" id="lbl-rgps">500</span>
+        </div>
+        <input type="range" class="amber" id="sl-rgps" min="10" max="8000" value="500">
+      </div>
+      <div class="slider-row">
+        <div class="slider-label">
+          <span class="slider-name">Varianza IMU <em>R<sub>imu</sub></em></span>
+          <span class="slider-value" id="lbl-rimu">50</span>
+        </div>
+        <input type="range" class="red" id="sl-rimu" min="1" max="1000" value="50">
+      </div>
+    </div>
+
+    <hr class="divider">
+
+    <div class="toggle-list">
+      <label class="toggle-item">
+        <input type="checkbox" id="chk-mismatch">
+        <div class="toggle-text">
+          <div class="t1">Física ciega (ocultar <em>u</em> al filtro)</div>
+          <div class="t2">Invalida matriz B → lag temporal observable</div>
+        </div>
+      </label>
+      <label class="toggle-item">
+        <input type="checkbox" id="chk-imu">
+        <div class="toggle-text">
+          <div class="t1">Fusión IMU (sensor de velocidad)</div>
+          <div class="t2">H pasa a 2×2, K pasa a 2×2, P colapsa más rápido</div>
+        </div>
+      </label>
+      <label class="toggle-item">
+        <input type="checkbox" id="chk-mahal">
+        <div class="toggle-text">
+          <div class="t1">Compuerta estadística de Mahalanobis</div>
+          <div class="t2">Rechaza outliers usando distancia χ² (umbral 95%)</div>
+        </div>
+      </label>
+    </div>
+
+    <div style="display:flex;flex-direction:column;gap:7px;margin-top:auto;padding-top:4px">
+      <button class="btn-danger" id="btn-anomaly">⚡ Inyectar anomalía +250 m</button>
+      <button class="btn-reset" id="btn-reset">↺ Reiniciar simulación</button>
+    </div>
+  </aside>
+
+  <!-- RIGHT COLUMN -->
+  <div class="right-col">
+
+    <!-- Metrics -->
+    <div class="metrics-row">
+      <div class="metric-card">
+        <div class="metric-label">RMSE posición</div>
+        <div class="metric-value blue" id="m-rmse">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Innov. media |ε̄|</div>
+        <div class="metric-value amber" id="m-innov">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Tr(P) covarianza</div>
+        <div class="metric-value sky" id="m-traceP">—</div>
+      </div>
+      <div class="metric-card">
+        <div class="metric-label">Ganancia K[0,0]</div>
+        <div class="metric-value green" id="m-k0">—</div>
+      </div>
+    </div>
+
+    <!-- Main chart -->
+    <div class="chart-wrapper">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 14px 0;flex-wrap:wrap;gap:8px">
+        <div class="chart-tabs">
+          <button class="ctab active" id="tab-pos" onclick="switchChart('pos')">Posición</button>
+          <button class="ctab" id="tab-vel" onclick="switchChart('vel')">Velocidad</button>
+        </div>
+        <div class="chart-legend">
+          <div class="legend-item"><div class="legend-line" style="border-top:2px dashed rgba(255,255,255,.55);background:none"></div>Real</div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--red)"></div>Medición</div>
+          <div class="legend-item"><div class="legend-line" style="background:var(--blue)"></div>Kalman</div>
+          <div class="legend-item"><div class="legend-line" style="background:rgba(47,128,237,.25);height:10px"></div>3σ</div>
+        </div>
+      </div>
+      <div class="canvas-area" style="height:290px;width:100%">
+        <canvas id="cv-main" width="800" height="290" style="width:100%;height:290px;display:block"></canvas>
+      </div>
+    </div>
+
+    <!-- Bottom row -->
+    <div class="bottom-row">
+      <!-- Innovation chart -->
+      <div class="chart-wrapper" id="wrap-innov">
+        <div class="chart-header">
+          <div class="chart-title">Error de innovación</div>
+        </div>
+        <div class="canvas-area" style="height:130px;width:100%">
+          <canvas id="cv-innov" width="400" height="130" style="width:100%;height:130px;display:block"></canvas>
+        </div>
+        <div class="chart-tooltip" id="tt-innov">
+          <strong>Error de innovación $\tilde{z}_k = z_k - H\hat{x}_k^-$</strong>
+          Diferencia entre la medición real del GPS y la predicción del modelo. Si el filtro está bien ajustado, debe comportarse como <span class="math-inline">ruido blanco</span> de media cero. Una tendencia sostenida indica error de modelo (lag) o deriva del sensor.
+        </div>
+      </div>
+
+      <!-- K gain chart -->
+      <div class="chart-wrapper" id="wrap-kgain">
+        <div class="chart-header">
+          <div class="chart-title">Ganancia de Kalman K</div>
+          <div style="display:flex;gap:10px;align-items:center">
+            <div class="chart-legend">
+              <div class="legend-item"><div class="legend-line" style="background:var(--green)"></div>K[pos]</div>
+              <div class="legend-item"><div class="legend-line" style="background:var(--amber)"></div>K[vel]</div>
+            </div>
+            <span class="imu-badge" id="imu-badge">IMU 2×2</span>
+          </div>
+        </div>
+        <div class="canvas-area" style="height:130px;width:100%">
+          <canvas id="cv-kgain" width="400" height="130" style="width:100%;height:130px;display:block"></canvas>
+        </div>
+        <div class="chart-tooltip" id="tt-kgain">
+          <strong>Ganancia óptima $K_k = P_k^- H^\top S_k^{-1}$</strong>
+          Pondera cuánto peso dar al sensor vs. al modelo. <span class="math-inline">K→0</span>: el filtro ignora el sensor (confía en la física). <span class="math-inline">K→H⁻¹</span>: el filtro ignora el modelo (copia el sensor). Converge al steady-state cuando P se estabiliza. Con IMU activo, K es 2×2 y aparece la fila de velocidad.
+        </div>
+      </div>
+
+      <!-- Matrix display -->
+      <div class="glass matrix-panel">
+        <div class="section-title">Álgebra en tiempo real <span class="imu-badge" id="imu-badge2">IMU activo — H 2×2</span></div>
+        <div class="matrix-grid">
+          <div class="mat-card">
+            <div class="mat-label" style="color:var(--green)">Q proceso</div>
+            <div class="mat-values green" id="mat-q"></div>
+            <div class="mat-footer">Duda física</div>
+            <div class="mat-tooltip">Covarianza de perturbaciones no modeladas. $Q = GG^\top \cdot q\_scale$ donde $G = [\frac{1}{2}\Delta t^2,\; \Delta t]^\top$.</div>
+          </div>
+          <div class="mat-card">
+            <div class="mat-label" style="color:var(--sky)">P covarianza</div>
+            <div class="mat-values blue" id="mat-p"></div>
+            <div class="mat-footer">Margen de duda</div>
+            <div class="mat-tooltip">Error estimado a posteriori. Diagonal: varianza de posición (arriba) y velocidad (abajo). Decrece al recibir mediciones.</div>
+          </div>
+          <div class="mat-card">
+            <div class="mat-label" style="color:var(--amber)">K ganancia <span class="imu-badge" id="imu-badge3" style="vertical-align:middle"></span></div>
+            <div class="mat-values amber" id="mat-k"></div>
+            <div class="mat-footer" id="mat-k-footer">Balanza de pesos</div>
+            <div class="mat-tooltip" id="mat-k-tip">Ganancia óptima de Kalman. Sin IMU: vector 2×1. Con IMU activo: matriz 2×2 — una columna por cada sensor (GPS y velocidad IMU).</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- THEORY SECTION -->
+<div class="theory-section glass">
+  <div class="theory-header">
+    <div class="section-title">Fundamentos teóricos</div>
+    <div class="theory-tabs">
+      <button class="theory-tab active" onclick="setTab(0)">1. Espacio de estados</button>
+      <button class="theory-tab" onclick="setTab(1)">2. Observador Luenberger</button>
+      <button class="theory-tab" onclick="setTab(2)">3. Enfoque estocástico</button>
+      <button class="theory-tab" onclick="setTab(3)">4. Ecuaciones del filtro</button>
+      <button class="theory-tab" onclick="setTab(4)">5. Divergencia y tuning</button>
+      <button class="theory-tab" onclick="setTab(5)">6. EKF — Péndulo no lineal</button>
+    </div>
+  </div>
+  <div class="theory-body" id="theory-body"></div>
+</div>
 
 </div>
-<footer>Procesamiento Digital de Señales · Simulación de Control Estocástico · ITBA — Desarrollado con arquitectura web nativa de alta velocidad</footer>
+<footer>Procesamiento Digital de Señales · Simulación de Control Estocástico · ITBA — Arquitectura web nativa de alta velocidad</footer>
 
 <script>
-// ─────────────────────────────────────────────
-// MATRIX MATH
-// ─────────────────────────────────────────────
-const M = {
-    add: (A,B) => A.map((r,i) => r.map((v,j) => v+B[i][j])),
-    sub: (A,B) => A.map((r,i) => r.map((v,j) => v-B[i][j])),
-    mul: (A,B) => {
-        let R = Array(A.length).fill(0).map(()=>Array(B[0].length).fill(0));
-        for(let i=0;i<A.length;i++) for(let j=0;j<B[0].length;j++) for(let k=0;k<A[0].length;k++) R[i][j]+=A[i][k]*B[k][j];
-        return R;
-    },
-    T: (A) => A[0].map((_,c) => A.map(r=>r[c])),
-    eye: (n) => Array(n).fill(0).map((_,i)=>Array(n).fill(0).map((_,j)=>i===j?1:0)),
-    inv2: (A) => {
-        let d=A[0][0]*A[1][1]-A[0][1]*A[1][0];
-        if(Math.abs(d)<1e-10) return [[0,0],[0,0]];
-        let di=1/d; return [[A[1][1]*di,-A[0][1]*di],[-A[1][0]*di,A[0][0]*di]];
-    }
+// ─── MATRIX MATH ───
+const M={
+  add:(A,B)=>A.map((r,i)=>r.map((v,j)=>v+B[i][j])),
+  sub:(A,B)=>A.map((r,i)=>r.map((v,j)=>v-B[i][j])),
+  mul:(A,B)=>{let R=Array(A.length).fill(0).map(()=>Array(B[0].length).fill(0));for(let i=0;i<A.length;i++)for(let j=0;j<B[0].length;j++)for(let k=0;k<A[0].length;k++)R[i][j]+=A[i][k]*B[k][j];return R},
+  T:(A)=>A[0].map((_,c)=>A.map(r=>r[c])),
+  eye:(n)=>Array(n).fill(0).map((_,i)=>Array(n).fill(0).map((_,j)=>i===j?1:0)),
+  inv2:(A)=>{let d=A[0][0]*A[1][1]-A[0][1]*A[1][0];if(Math.abs(d)<1e-10)return[[0,0],[0,0]];let di=1/d;return[[A[1][1]*di,-A[0][1]*di],[-A[1][0]*di,A[0][0]*di]]}
 };
 
-// ─────────────────────────────────────────────
-// KALMAN FILTER
-// ─────────────────────────────────────────────
+// ─── KALMAN FILTER ───
 class KF {
-    constructor(dt) {
-        this.dt = dt;
-        this.x = [[0],[0]];
-        this.F = [[1,dt],[0,1]];
-        this.B = [[0.5*dt*dt],[dt]];
-        this.P = [[500,0],[0,500]];
-        this.Q = [[0,0],[0,0]];
-        this.K = [[0],[0]];
-        this.innov = 0;
-        // tuneable
-        this.q_scale = 1000;
-        this.r_gps   = 500;
-        this.r_imu   = 50;
-        this.use_imu = false;
-        this.mismatch = false;
-        this.mahal   = false;
-        this._updateQ();
+  constructor(dt){
+    this.dt=dt;
+    this.x=[[0],[0]];
+    this.F=[[1,dt],[0,1]];
+    this.B=[[.5*dt*dt],[dt]];
+    this.P=[[500,0],[0,500]];
+    this.Q=[[0,0],[0,0]];
+    this.K=[[0],[0]]; // 2x1 without IMU, 2x2 with IMU
+    this.innov=0;
+    this.q_scale=1000;this.r_gps=500;this.r_imu=50;
+    this.use_imu=false;this.mismatch=false;this.mahal=false;
+    this.sensor_bias=0; // for drift scenario
+    this._updateQ();
+  }
+  _updateQ(){
+    let G=[[.5*this.dt*this.dt],[this.dt]];
+    this.Q=M.mul(G,M.T(G)).map(r=>r.map(v=>v*this.q_scale));
+  }
+  predict(u){
+    let uf=this.mismatch?0:u;
+    let Fx=M.mul(this.F,this.x);
+    let Bu=this.B.map(r=>[r[0]*uf]);
+    this.x=M.add(Fx,Bu);
+    this.P=M.add(M.mul(M.mul(this.F,this.P),M.T(this.F)),this.Q);
+  }
+  update(z_gps,z_imu){
+    let H,R,z;
+    if(this.use_imu&&z_imu!==null){
+      H=[[1,0],[0,1]];R=[[this.r_gps,0],[0,this.r_imu]];z=[[z_gps],[z_imu]];
+    } else {
+      H=[[1,0]];R=[[this.r_gps]];z=[[z_gps]];
     }
-    _updateQ() {
-        let G = [[0.5*this.dt*this.dt],[this.dt]];
-        this.Q = M.mul(G, M.T(G)).map(r=>r.map(v=>v*this.q_scale));
+    let Hx=M.mul(H,this.x);
+    let e=M.sub(z,Hx);
+    this.innov=e[0][0];
+    let HP=M.mul(H,this.P);
+    let S=M.add(M.mul(HP,M.T(H)),R);
+    let Si=H.length===2?M.inv2(S):[[1/S[0][0]]];
+    if(this.mahal){
+      let eT=M.T(e);
+      let md=H.length===2?M.mul(M.mul(eT,Si),e)[0][0]:e[0][0]*Si[0][0]*e[0][0];
+      if(md>(H.length===2?5.991:3.841))return;
     }
-    predict(u) {
-        let uf = this.mismatch ? 0 : u;
-        let Fx = M.mul(this.F, this.x);
-        let Bu = this.B.map(r=>[r[0]*uf]);
-        this.x = M.add(Fx, Bu);
-        this.P = M.add(M.mul(M.mul(this.F,this.P), M.T(this.F)), this.Q);
-    }
-    update(z_gps, z_imu) {
-        let H, R, z;
-        if(this.use_imu && z_imu !== null) {
-            H = [[1,0],[0,1]]; R = [[this.r_gps,0],[0,this.r_imu]]; z = [[z_gps],[z_imu]];
-        } else {
-            H = [[1,0]]; R = [[this.r_gps]]; z = [[z_gps]];
-        }
-        let Hx = M.mul(H, this.x);
-        let e  = M.sub(z, Hx);
-        this.innov = e[0][0];
-        let HP  = M.mul(H, this.P);
-        let S   = M.add(M.mul(HP, M.T(H)), R);
-        let Si  = H.length===2 ? M.inv2(S) : [[1/S[0][0]]];
-        // Mahalanobis gate
-        if(this.mahal) {
-            let eT = M.T(e);
-            let md = H.length===2
-                ? M.mul(M.mul(eT,Si),e)[0][0]
-                : e[0][0]*Si[0][0]*e[0][0];
-            let thresh = H.length===2 ? 5.991 : 3.841;
-            if(md > thresh) return;
-        }
-        let PHt = M.mul(this.P, M.T(H));
-        this.K  = M.mul(PHt, Si);
-        let Ke  = M.mul(this.K, e);
-        this.x  = M.add(this.x, Ke);
-        let I   = M.eye(2);
-        this.P  = M.mul(M.sub(I, M.mul(this.K, H)), this.P);
-    }
+    let PHt=M.mul(this.P,M.T(H));
+    this.K=M.mul(PHt,Si); // 2x1 or 2x2
+    let Ke=M.mul(this.K,e);
+    this.x=M.add(this.x,Ke);
+    let I=M.eye(2);
+    this.P=M.mul(M.sub(I,M.mul(this.K,H)),this.P);
+  }
 }
 
-// ─────────────────────────────────────────────
-// SIMULATION STATE
-// ─────────────────────────────────────────────
-const DT = 0.05;
-let kf, t=0, tp=0, tv=0, anomaly=0;
-let activeChart = 'pos';
-const MAX = 160;
-const logs = { t:[], tp:[], tv:[], gps:[], gps_v:[], kf_p:[], kf_v:[], innov:[], p_pos:[], p_vel:[], k0:[], k1:[] };
-
-function initSim() {
-    kf = new KF(DT);
-    t=0; tp=0; tv=0; anomaly=0;
-    for(let k in logs) logs[k]=[];
+// ─── EKF for nonlinear pendulum ───
+// State: [theta, omega], obs: [sin(theta)]
+class PendulumEKF {
+  constructor(dt,g,L){
+    this.dt=dt;this.g=g;this.L=L;
+    this.x=[[0.8],[0]]; // initial angle ~46 deg, omega=0
+    this.P=[[0.1,0],[0,0.1]];
+    this.Q=[[0.001,0],[0,0.001]];
+    this.R=[[0.05]];
+    this.K=[[0],[0]];
+    this.innov=0;
+  }
+  predict(){
+    let th=this.x[0][0],om=this.x[1][0];
+    // nonlinear dynamics: theta'' = -(g/L)*sin(theta)
+    let th2=th+om*this.dt;
+    let om2=om-(this.g/this.L)*Math.sin(th)*this.dt;
+    this.x=[[th2],[om2]];
+    // Jacobian F = d f/dx
+    let F=[[1,this.dt],[-(this.g/this.L)*Math.cos(th)*this.dt,1]];
+    this.P=M.add(M.mul(M.mul(F,this.P),M.T(F)),this.Q);
+  }
+  update(z_sin){
+    // h(x)=sin(theta), H = [cos(theta), 0]
+    let th=this.x[0][0];
+    let H=[[Math.cos(th),0]];
+    let z=[[z_sin]];
+    let Hx=[[Math.sin(th)]];
+    let e=M.sub(z,Hx);
+    this.innov=e[0][0];
+    let S=M.add(M.mul(M.mul(H,this.P),M.T(H)),this.R);
+    let Si=[[1/S[0][0]]];
+    let PHt=M.mul(this.P,M.T(H));
+    this.K=M.mul(PHt,Si);
+    this.x=M.add(this.x,M.mul(this.K,e));
+    let I=M.eye(2);
+    this.P=M.mul(M.sub(I,M.mul(this.K,H)),this.P);
+  }
 }
 
-function gauss() { return Math.sqrt(-2*Math.log(Math.random()+1e-15))*Math.cos(2*Math.PI*Math.random()); }
+// ─── SIMULATION STATE ───
+const DT=0.05;
+let kf,t=0,tp=0,tv=0,anomaly=0,sensor_drift=0,drift_active=false;
+let activeChart='pos';
+const MAX=160;
+const logs={t:[],tp:[],tv:[],gps:[],gps_v:[],kf_p:[],kf_v:[],innov:[],p_pos:[],p_vel:[],k00:[],k10:[],k01:[],k11:[]};
 
-function readUI() {
-    kf.q_scale  = +document.getElementById('sl-q').value;
-    kf.r_gps    = +document.getElementById('sl-rgps').value;
-    kf.r_imu    = +document.getElementById('sl-rimu').value;
-    kf.mismatch = document.getElementById('chk-mismatch').checked;
-    kf.use_imu  = document.getElementById('chk-imu').checked;
-    kf.mahal    = document.getElementById('chk-mahal').checked;
-    kf._updateQ();
+function initSim(){
+  kf=new KF(DT);t=0;tp=0;tv=0;anomaly=0;sensor_drift=0;
+  for(let k in logs)logs[k]=[];
 }
 
-function step() {
-    let traj = +document.getElementById('sel-traj').value;
-    let u    = +document.getElementById('sl-u').value;
+function gauss(){return Math.sqrt(-2*Math.log(Math.random()+1e-15))*Math.cos(2*Math.PI*Math.random())}
 
-    if(traj===0) { tv += u*DT; }
-    else if(traj===1) { tv = Math.cos(t)*50; u = -Math.sin(t)*50; }
-    else { if(t<3){tv=80;u=0;}else{tv-=50*DT;u=-50;} }
-
-    tv = Math.max(Math.min(tv,120),-120);
-    tp += tv*DT;
-
-    let gps_n  = gauss()*Math.sqrt(kf.r_gps);
-    let imu_n  = gauss()*Math.sqrt(kf.r_imu);
-    let z_gps  = tp + gps_n + anomaly;
-    let z_imu  = tv + imu_n;
-    anomaly=0;
-
-    readUI();
-    kf.predict(u);
-    kf.update(z_gps, z_imu);
-
-    logs.t.push(t);
-    logs.tp.push(tp);
-    logs.tv.push(tv);
-    logs.gps.push(z_gps);
-    logs.gps_v.push(z_imu);
-    logs.kf_p.push(kf.x[0][0]);
-    logs.kf_v.push(kf.x[1][0]);
-    logs.innov.push(kf.innov);
-    logs.p_pos.push(kf.P[0][0]);
-    logs.p_vel.push(kf.P[1][1]);
-    logs.k0.push(kf.K[0][0]);
-    logs.k1.push(kf.K[1] ? kf.K[1][0] : 0);
-
-    if(logs.t.length>MAX) for(let k in logs) logs[k].shift();
-
-    updateMatrices();
-    updateMetrics();
-    renderAll();
-    t+=DT;
+function readUI(){
+  kf.q_scale=+document.getElementById('sl-q').value;
+  kf.r_gps=+document.getElementById('sl-rgps').value;
+  kf.r_imu=+document.getElementById('sl-rimu').value;
+  kf.mismatch=document.getElementById('chk-mismatch').checked;
+  kf.use_imu=document.getElementById('chk-imu').checked;
+  kf.mahal=document.getElementById('chk-mahal').checked;
+  kf._updateQ();
 }
 
-// ─────────────────────────────────────────────
-// METRICS
-// ─────────────────────────────────────────────
-function updateMetrics() {
-    if(logs.t.length<2) return;
-    let n=logs.tp.length;
-    let rmse = Math.sqrt(logs.tp.reduce((s,v,i)=>s+(v-logs.kf_p[i])**2,0)/n);
-    let mi   = logs.innov.reduce((s,v)=>s+Math.abs(v),0)/n;
-    let trP  = kf.P[0][0]+kf.P[1][1];
-    let k0   = kf.K[0][0];
-    document.getElementById('m-rmse').textContent   = rmse.toFixed(2)+' m';
-    document.getElementById('m-innov').textContent  = mi.toFixed(2)+' m';
-    document.getElementById('m-traceP').textContent = trP.toFixed(1);
-    document.getElementById('m-k0').textContent     = k0.toFixed(4);
+function step(){
+  let traj=+document.getElementById('sel-traj').value;
+  let u=+document.getElementById('sl-u').value;
+
+  // Trajectory profiles
+  if(traj===0){ tv+=u*DT; }
+  else if(traj===1){ tv=Math.cos(t)*50; u=-Math.sin(t)*50; }
+  else if(traj===2){ if(t<3){tv=80;u=0;}else{tv-=50*DT;u=-50;} }
+  else if(traj===3){ // S-curve: accelerate then brake
+    if(t<4){u=20;tv+=u*DT;}
+    else if(t<8){u=-20;tv+=u*DT;}
+    else{u=0;}
+  }
+  else if(traj===4){ // velocity step impulse
+    if(t<2){tv=0;u=0;}
+    else if(t<2.1){tv=60;u=600;} // instant step
+    else{tv=60;u=0;}
+  }
+  else if(traj===5){ // damped oscillation
+    let omega=1.2,damp=0.15;
+    tv=60*Math.exp(-damp*t)*Math.cos(omega*t);
+    u=-60*(damp*Math.exp(-damp*t)*Math.cos(omega*t)+omega*Math.exp(-damp*t)*Math.sin(omega*t));
+  }
+
+  tv=Math.max(Math.min(tv,150),-150);
+  tp+=tv*DT;
+
+  // Sensor drift (preset 6)
+  if(drift_active) sensor_drift+=0.3*DT;
+
+  let gps_n=gauss()*Math.sqrt(kf.r_gps);
+  let imu_n=gauss()*Math.sqrt(kf.r_imu);
+  let z_gps=tp+gps_n+anomaly+sensor_drift;
+  let z_imu=tv+imu_n;
+  anomaly=0;
+
+  readUI();
+  kf.predict(u);
+  kf.update(z_gps,z_imu);
+
+  logs.t.push(t);
+  logs.tp.push(tp);
+  logs.tv.push(tv);
+  logs.gps.push(z_gps);
+  logs.gps_v.push(z_imu);
+  logs.kf_p.push(kf.x[0][0]);
+  logs.kf_v.push(kf.x[1][0]);
+  logs.innov.push(kf.innov);
+  logs.p_pos.push(kf.P[0][0]);
+  logs.p_vel.push(kf.P[1][1]);
+  // K: always store 2x2 (zeros if IMU off)
+  logs.k00.push(kf.K[0][0]);
+  logs.k10.push(kf.K[1][0]);
+  logs.k01.push(kf.use_imu&&kf.K[0][1]!=null?kf.K[0][1]:0);
+  logs.k11.push(kf.use_imu&&kf.K[1][1]!=null?kf.K[1][1]:0);
+
+  if(logs.t.length>MAX)for(let k in logs)logs[k].shift();
+
+  updateMatrices();
+  updateMetrics();
+  updateIMUIndicators();
+  renderAll();
+  t+=DT;
 }
 
-// ─────────────────────────────────────────────
-// MATRIX DISPLAY
-// ─────────────────────────────────────────────
-function fmt(v){ return v.toFixed(1).padStart(7); }
-function fmt2(v){ return v.toFixed(3).padStart(7); }
-
-function updateMatrices() {
-    let Q=kf.Q, P=kf.P, K=kf.K;
-    document.getElementById('mat-q').textContent =
-        `[${fmt(Q[0][0])}  ${fmt(Q[0][1])}]\n[${fmt(Q[1][0])}  ${fmt(Q[1][1])}]`;
-    document.getElementById('mat-p').textContent =
-        `[${fmt(P[0][0])}  ${fmt(P[0][1])}]\n[${fmt(P[1][0])}  ${fmt(P[1][1])}]`;
-    let k1str = K[1] ? K[1][0].toFixed(4) : '0.0000';
-    document.getElementById('mat-k').textContent =
-        `[${K[0][0].toFixed(4)}]\n[${k1str}]`;
+// ─── METRICS ───
+function updateMetrics(){
+  if(logs.t.length<2)return;
+  let n=logs.tp.length;
+  let rmse=Math.sqrt(logs.tp.reduce((s,v,i)=>s+(v-logs.kf_p[i])**2,0)/n);
+  let mi=logs.innov.reduce((s,v)=>s+Math.abs(v),0)/n;
+  let trP=kf.P[0][0]+kf.P[1][1];
+  document.getElementById('m-rmse').textContent=rmse.toFixed(2)+' m';
+  document.getElementById('m-innov').textContent=mi.toFixed(2)+' m';
+  document.getElementById('m-traceP').textContent=trP.toFixed(1);
+  document.getElementById('m-k0').textContent=kf.K[0][0].toFixed(4);
 }
 
-// ─────────────────────────────────────────────
-// CANVAS RENDERING
-// ─────────────────────────────────────────────
-function setupCanvas(id, h) {
-    let cv = document.getElementById(id);
-    let dpr = window.devicePixelRatio || 1;
-    // Use offsetWidth as fallback when getBoundingClientRect returns 0 (iframe init)
-    let W = cv.parentElement.getBoundingClientRect().width || cv.parentElement.offsetWidth || 600;
-    let wPx = Math.round(W * dpr);
-    let hPx = Math.round(h * dpr);
-    if (cv.width !== wPx || cv.height !== hPx) {
-        cv.width  = wPx;
-        cv.height = hPx;
-        cv.style.width  = W + 'px';
-        cv.style.height = h + 'px';
-    }
-    let ctx = cv.getContext('2d');
-    // Reset transform completely each frame — avoids scale accumulation
-    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, W, h);
-    return { ctx, W, H: h };
+// ─── MATRIX DISPLAY ───
+function fmt(v){return v.toFixed(1).padStart(7)}
+function updateMatrices(){
+  let Q=kf.Q,P=kf.P,K=kf.K;
+  document.getElementById('mat-q').textContent=
+    `[${fmt(Q[0][0])}  ${fmt(Q[0][1])}]\n[${fmt(Q[1][0])}  ${fmt(Q[1][1])}]`;
+  document.getElementById('mat-p').textContent=
+    `[${fmt(P[0][0])}  ${fmt(P[0][1])}]\n[${fmt(P[1][0])}  ${fmt(P[1][1])}]`;
+
+  // K display: 2x1 or 2x2 depending on IMU
+  if(kf.use_imu&&K[0].length===2){
+    document.getElementById('mat-k').textContent=
+      `[${K[0][0].toFixed(3).padStart(6)}  ${K[0][1].toFixed(3).padStart(6)}]\n[${K[1][0].toFixed(3).padStart(6)}  ${K[1][1].toFixed(3).padStart(6)}]`;
+    document.getElementById('mat-k-footer').textContent='2×2 (GPS+IMU)';
+  } else {
+    let k1=K[1]?K[1][0]:0;
+    document.getElementById('mat-k').textContent=
+      `[${K[0][0].toFixed(4).padStart(7)}]\n[${k1.toFixed(4).padStart(7)}]`;
+    document.getElementById('mat-k-footer').textContent='2×1 (solo GPS)';
+  }
 }
 
-function grid(ctx, W, H, color='#17171b') {
-    ctx.strokeStyle=color; ctx.lineWidth=0.5;
-    for(let x=0;x<W;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
-    for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+function updateIMUIndicators(){
+  let on=kf.use_imu;
+  ['imu-badge','imu-badge2','imu-badge3'].forEach(id=>{
+    let el=document.getElementById(id);
+    if(el){el.classList.toggle('visible',on);}
+  });
+  document.getElementById('imu-badge').textContent='IMU 2×2';
+  document.getElementById('imu-badge2').textContent='IMU activo — H 2×2';
+  document.getElementById('imu-badge3').textContent='2×2';
 }
 
-function renderAll() {
-    renderMain();
-    renderInnov();
-    renderKGain();
+// ─── CANVAS ───
+function setupCanvas(id,h){
+  let cv=document.getElementById(id);
+  let dpr=window.devicePixelRatio||1;
+  let W=cv.parentElement.getBoundingClientRect().width||cv.parentElement.offsetWidth||600;
+  let wPx=Math.round(W*dpr),hPx=Math.round(h*dpr);
+  if(cv.width!==wPx||cv.height!==hPx){cv.width=wPx;cv.height=hPx;cv.style.width=W+'px';cv.style.height=h+'px';}
+  let ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,h);
+  return{ctx,W,H:h};
 }
 
-function renderMain() {
-    let h = 290;
-    let {ctx,W,H} = setupCanvas('cv-main', h);
-    if(logs.t.length<2) return;
+function grid(ctx,W,H){
+  ctx.strokeStyle='#16161a';ctx.lineWidth=0.5;
+  for(let x=0;x<W;x+=60){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,H);ctx.stroke();}
+  for(let y=0;y<H;y+=40){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(W,y);ctx.stroke();}
+}
 
-    let isPos = activeChart==='pos';
-    let yArr  = isPos ? logs.kf_p : logs.kf_v;
-    let tArr  = isPos ? logs.tp   : logs.tv;
-    let gArr  = isPos ? logs.gps  : logs.gps_v;
-    let pArr  = isPos ? logs.p_pos: logs.p_vel;
+function renderAll(){renderMain();renderInnov();renderKGain();}
 
-    let tMin = Math.max(0, t-8), tMax=t+0.4;
-    let cur  = yArr[yArr.length-1];
-    let spread= isPos?180:40;
-    let yMin = cur-spread, yMax=cur+spread;
+function renderMain(){
+  let h=290;
+  let{ctx,W,H}=setupCanvas('cv-main',h);
+  if(logs.t.length<2)return;
+  let isPos=activeChart==='pos';
+  let yArr=isPos?logs.kf_p:logs.kf_v;
+  let tArr=isPos?logs.tp:logs.tv;
+  let gArr=isPos?logs.gps:logs.gps_v;
+  let pArr=isPos?logs.p_pos:logs.p_vel;
+  let tMin=Math.max(0,t-8),tMax=t+0.4;
+  let cur=yArr[yArr.length-1];
+  let spread=isPos?200:50;
+  let yMin=cur-spread,yMax=cur+spread;
+  let mx=v=>((v-tMin)/(tMax-tMin))*W;
+  let my=v=>H-((v-yMin)/(yMax-yMin))*H;
+  grid(ctx,W,H);
+  if(isPos){
+    ctx.fillStyle='rgba(47,128,237,0.07)';
+    ctx.beginPath();
+    ctx.moveTo(mx(logs.t[0]),my(logs.kf_p[0]+3*Math.sqrt(Math.max(0,pArr[0]))));
+    for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(yArr[i]+3*Math.sqrt(Math.max(0,pArr[i]))));
+    for(let i=logs.t.length-1;i>=0;i--)ctx.lineTo(mx(logs.t[i]),my(yArr[i]-3*Math.sqrt(Math.max(0,pArr[i]))));
+    ctx.closePath();ctx.fill();
+  }
+  ctx.strokeStyle='rgba(255,255,255,0.45)';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(mx(logs.t[0]),my(tArr[0]));
+  for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(tArr[i]));
+  ctx.stroke();ctx.setLineDash([]);
+  for(let i=0;i<logs.t.length;i+=2){
+    let gx=mx(logs.t[i]),gy=my(gArr[i]);
+    if(gx>=0&&gx<=W&&gy>=-10&&gy<=H+10){ctx.fillStyle='rgba(231,76,60,0.55)';ctx.beginPath();ctx.arc(gx,gy,2.5,0,2*Math.PI);ctx.fill();}
+  }
+  ctx.strokeStyle=isPos?'#2f80ed':'#27ae60';ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(mx(logs.t[0]),my(yArr[0]));
+  for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(yArr[i]));
+  ctx.stroke();
+}
 
-    let mx = v => ((v-tMin)/(tMax-tMin))*W;
-    let my = v => H - ((v-yMin)/(yMax-yMin))*H;
+function renderInnov(){
+  let{ctx,W,H}=setupCanvas('cv-innov',130);
+  if(logs.t.length<2)return;
+  let tMin=Math.max(0,t-8),tMax=t+0.4;
+  let mx=v=>((v-tMin)/(tMax-tMin))*W;
+  let peak=Math.max(...logs.innov.map(Math.abs),10);
+  let my=v=>H/2-(v/(peak*1.2))*(H/2);
+  grid(ctx,W,H);
+  ctx.strokeStyle='#222228';ctx.lineWidth=1;
+  ctx.beginPath();ctx.moveTo(0,H/2);ctx.lineTo(W,H/2);ctx.stroke();
+  // ±1σ bands
+  let sig=Math.sqrt(kf.r_gps);
+  let sy=H/2-(sig/(peak*1.2))*(H/2);
+  ctx.strokeStyle='rgba(47,128,237,0.2)';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(0,sy);ctx.lineTo(W,sy);ctx.stroke();
+  ctx.beginPath();ctx.moveTo(0,H-sy);ctx.lineTo(W,H-sy);ctx.stroke();
+  ctx.setLineDash([]);
+  ctx.strokeStyle='#e67e22';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx(logs.t[0]),my(logs.innov[0]));
+  for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(logs.innov[i]));
+  ctx.stroke();
+}
 
-    grid(ctx, W, H);
-
-    // 3σ band
-    if(isPos) {
-        ctx.fillStyle='rgba(47,128,237,0.07)';
-        ctx.beginPath();
-        ctx.moveTo(mx(logs.t[0]), my(logs.kf_p[0]+3*Math.sqrt(pArr[0])));
-        for(let i=1;i<logs.t.length;i++) ctx.lineTo(mx(logs.t[i]), my(yArr[i]+3*Math.sqrt(pArr[i])));
-        for(let i=logs.t.length-1;i>=0;i--) ctx.lineTo(mx(logs.t[i]), my(yArr[i]-3*Math.sqrt(pArr[i])));
-        ctx.closePath(); ctx.fill();
-    }
-
-    // True
-    ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1.5; ctx.setLineDash([5,4]);
-    ctx.beginPath(); ctx.moveTo(mx(logs.t[0]), my(tArr[0]));
-    for(let i=1;i<logs.t.length;i++) ctx.lineTo(mx(logs.t[i]), my(tArr[i]));
-    ctx.stroke(); ctx.setLineDash([]);
-
-    // GPS dots
-    for(let i=0;i<logs.t.length;i+=2) {
-        let gx=mx(logs.t[i]), gy=my(gArr[i]);
-        if(gx>=0&&gx<=W&&gy>=-10&&gy<=H+10) {
-            ctx.fillStyle='rgba(231,76,60,0.55)';
-            ctx.beginPath(); ctx.arc(gx,gy,2.5,0,2*Math.PI); ctx.fill();
-        }
-    }
-
-    // KF estimate
-    ctx.strokeStyle=isPos?'#2f80ed':'#27ae60'; ctx.lineWidth=2.5;
-    ctx.beginPath(); ctx.moveTo(mx(logs.t[0]), my(yArr[0]));
-    for(let i=1;i<logs.t.length;i++) ctx.lineTo(mx(logs.t[i]), my(yArr[i]));
+function renderKGain(){
+  let{ctx,W,H}=setupCanvas('cv-kgain',130);
+  if(logs.t.length<2)return;
+  let tMin=Math.max(0,t-8),tMax=t+0.4;
+  let mx=v=>((v-tMin)/(tMax-tMin))*W;
+  // include all K components in scale
+  let allK=[...logs.k00,...logs.k10];
+  if(kf.use_imu)allK.push(...logs.k01,...logs.k11);
+  let peak=Math.max(...allK.map(Math.abs),0.01);
+  let my=v=>H-(v/peak)*H*0.85-4;
+  grid(ctx,W,H);
+  // K[0,0] pos gain from GPS
+  ctx.strokeStyle='#27ae60';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx(logs.t[0]),my(logs.k00[0]));
+  for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(logs.k00[i]));
+  ctx.stroke();
+  // K[1,0] vel gain from GPS
+  ctx.strokeStyle='#e67e22';ctx.lineWidth=1.5;
+  ctx.beginPath();ctx.moveTo(mx(logs.t[0]),my(logs.k10[0]));
+  for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(logs.k10[i]));
+  ctx.stroke();
+  // IMU columns (dashed)
+  if(kf.use_imu){
+    ctx.strokeStyle='#56b6c2';ctx.lineWidth=1;ctx.setLineDash([3,3]);
+    ctx.beginPath();ctx.moveTo(mx(logs.t[0]),my(logs.k01[0]));
+    for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(logs.k01[i]));
     ctx.stroke();
-}
-
-function renderInnov() {
-    let {ctx,W,H} = setupCanvas('cv-innov', 130);
-    if(logs.t.length<2) return;
-    let tMin=Math.max(0,t-8),tMax=t+0.4;
-    let mx=v=>((v-tMin)/(tMax-tMin))*W;
-    let peak=Math.max(...logs.innov.map(Math.abs),10);
-    let my=v=>H/2-(v/(peak*1.15))*(H/2);
-
-    grid(ctx,W,H);
-    ctx.strokeStyle='#2a2a30'; ctx.lineWidth=1;
-    ctx.beginPath(); ctx.moveTo(0,H/2); ctx.lineTo(W,H/2); ctx.stroke();
-
-    ctx.strokeStyle='#e67e22'; ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.moveTo(mx(logs.t[0]),my(logs.innov[0]));
-    for(let i=1;i<logs.t.length;i++) ctx.lineTo(mx(logs.t[i]),my(logs.innov[i]));
+    ctx.strokeStyle='#9b59b6';
+    ctx.beginPath();ctx.moveTo(mx(logs.t[0]),my(logs.k11[0]));
+    for(let i=1;i<logs.t.length;i++)ctx.lineTo(mx(logs.t[i]),my(logs.k11[i]));
     ctx.stroke();
+    ctx.setLineDash([]);
+  }
 }
 
-function renderKGain() {
-    let {ctx,W,H} = setupCanvas('cv-kgain', 130);
-    if(logs.t.length<2) return;
-    let tMin=Math.max(0,t-8),tMax=t+0.4;
-    let mx=v=>((v-tMin)/(tMax-tMin))*W;
-    let peak=Math.max(...logs.k0.map(Math.abs),...logs.k1.map(Math.abs),0.05);
-    let my=v=>H-(v/peak)*H*0.85-4;
-
-    grid(ctx,W,H);
-
-    // k0 (position gain)
-    ctx.strokeStyle='#27ae60'; ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.moveTo(mx(logs.t[0]),my(logs.k0[0]));
-    for(let i=1;i<logs.t.length;i++) ctx.lineTo(mx(logs.t[i]),my(logs.k0[i]));
-    ctx.stroke();
-
-    // k1 (velocity gain)
-    ctx.strokeStyle='#e67e22'; ctx.lineWidth=1.5;
-    ctx.beginPath(); ctx.moveTo(mx(logs.t[0]),my(logs.k1[0]));
-    for(let i=1;i<logs.t.length;i++) ctx.lineTo(mx(logs.t[i]),my(logs.k1[i]));
-    ctx.stroke();
+// ─── CHART HOVER TOOLTIPS ───
+function setupChartTooltip(wrapperId, tooltipId){
+  let wrap=document.getElementById(wrapperId);
+  let tt=document.getElementById(tooltipId);
+  if(!wrap||!tt)return;
+  wrap.addEventListener('mouseenter',()=>{tt.style.display='block'});
+  wrap.addEventListener('mouseleave',()=>{tt.style.display='none'});
+  wrap.addEventListener('mousemove',e=>{
+    let rect=wrap.getBoundingClientRect();
+    let x=e.clientX-rect.left,y=e.clientY-rect.top;
+    // keep tooltip inside wrapper
+    let tw=tt.offsetWidth||250,th=tt.offsetHeight||90;
+    tt.style.left=Math.min(x+12,rect.width-tw-8)+'px';
+    tt.style.top=Math.max(4,y-th-8)+'px';
+  });
 }
 
-// ─────────────────────────────────────────────
-// UI EVENTS
-// ─────────────────────────────────────────────
-function switchChart(tab) {
-    activeChart = tab;
-    document.getElementById('tab-pos').classList.toggle('active',tab==='pos');
-    document.getElementById('tab-vel').classList.toggle('active',tab==='vel');
+// ─── SWITCH CHART ───
+function switchChart(tab){
+  activeChart=tab;
+  document.getElementById('tab-pos').classList.toggle('active',tab==='pos');
+  document.getElementById('tab-vel').classList.toggle('active',tab==='vel');
 }
 
-document.getElementById('sl-u').addEventListener('input', e=>{ document.getElementById('lbl-u').textContent=e.target.value+' m/s²'; });
-document.getElementById('sl-q').addEventListener('input', e=>{ document.getElementById('lbl-q').textContent=Number(e.target.value).toLocaleString(); });
-document.getElementById('sl-rgps').addEventListener('input', e=>{ document.getElementById('lbl-rgps').textContent=e.target.value; });
-document.getElementById('sl-rimu').addEventListener('input', e=>{ document.getElementById('lbl-rimu').textContent=e.target.value; });
+// ─── SLIDERS ───
+document.getElementById('sl-u').addEventListener('input',e=>{document.getElementById('lbl-u').textContent=e.target.value+' m/s²'});
+document.getElementById('sl-q').addEventListener('input',e=>{document.getElementById('lbl-q').textContent=Number(e.target.value).toLocaleString()});
+document.getElementById('sl-rgps').addEventListener('input',e=>{document.getElementById('lbl-rgps').textContent=e.target.value});
+document.getElementById('sl-rimu').addEventListener('input',e=>{document.getElementById('lbl-rimu').textContent=e.target.value});
 
+// ─── BUTTONS ───
 document.getElementById('btn-anomaly').addEventListener('click',()=>anomaly=250);
-document.getElementById('btn-reset').addEventListener('click', ()=>initSim());
-document.getElementById('sel-traj').addEventListener('change', ()=>initSim());
+document.getElementById('btn-reset').addEventListener('click',()=>{drift_active=false;initSim()});
+document.getElementById('sel-traj').addEventListener('change',()=>initSim());
 
-const PRESETS = [
-    "<strong>Modo libre avanzado:</strong> Control total sobre todos los parámetros. Manipule la aceleración, ruidos de proceso ($Q$) y medición ($R$) y active los sensores para observar cómo muta la covarianza.",
-    "<strong>Comportamiento estocástico ideal:</strong> GPS con baja dispersión y física bien modelada. Observe cómo $P$ decrece hasta estabilizarse. El filtro balancea modelo y sensor perfectamente.",
-    "<strong>GPS muy ruidoso:</strong> $Q$ mínima, $R_{GPS}$ alta. El filtro desconfía del sensor y confía en la inercia del modelo cinemático. La estimación ignora los picos aleatorios del GPS.",
-    "<strong>Física ciega (lag):</strong> El vehículo acelera bruscamente, pero el filtro desconoce $u$. Se observa un retardo estructural; el algoritmo asume velocidad constante y tarda en converger.",
-    "<strong>Fusión óptima GPS + IMU:</strong> Dos fuentes ortogonales de información. La franja de incertidumbre $P$ colapsa rápidamente, combinando posición GPS y velocidad IMU de forma óptima.",
-    "<strong>Compuerta estadística:</strong> El filtro calcula la distancia de Mahalanobis de cada medición. Inyecte una anomalía (+250 m) para ver cómo es rechazada automáticamente por exceder el umbral χ²."
+// ─── PRESETS ───
+const PRESETS=[
+  "<strong>Modo libre avanzado:</strong> Control total. Ajuste la aceleración, ruidos de proceso $Q$ y medición $R$, y active los sensores para observar en vivo cómo mutan las matrices.",
+  "<strong>Comportamiento estocástico ideal:</strong> GPS con baja dispersión y física bien modelada. Observe cómo $P$ decrece exponencialmente hasta el estado estacionario.",
+  "<strong>GPS muy ruidoso:</strong> $q\\_scale$ mínimo, $R_{GPS}$ alta. El filtro desconfía del sensor y confía en la inercia cinemática. La estimación ignora los picos del GPS.",
+  "<strong>Física ciega (lag):</strong> El vehículo acelera bruscamente pero el filtro desconoce $u$. Aparece un retardo estructural: el modelo asume velocidad constante.",
+  "<strong>Fusión óptima GPS + IMU:</strong> H pasa a 2×2, K pasa a 2×2. La incertidumbre $P$ colapsa más rápido al contar con velocidad y posición como observaciones independientes.",
+  "<strong>Compuerta de Mahalanobis:</strong> El filtro verifica la plausibilidad estadística de cada medición. Inyecte una anomalía (+250 m) para ver cómo la distancia χ² la rechaza automáticamente.",
+  "<strong>Deriva del sensor (bias acumulativo):</strong> El GPS acumula un error sistemático creciente de 0.3 m/s. Observe cómo la innovación se aleja de cero sostenidamente y el filtro intenta compensar.",
+  "<strong>Q nula — predicción pura:</strong> Sin ruido de proceso el filtro asume modelo perfecto. $P$ decrece hasta cero y el filtro deja de actualizar. Cualquier error de modelo produce divergencia.",
+  "<strong>Alta dinámica con fusión IMU:</strong> Trayectoria senoidal de alta amplitud con IMU activo. La medición de velocidad reduce drásticamente el lag ante cambios de dirección."
 ];
-
-const PRESET_CFG = [
-    {},
-    { q:1000,  rgps:200,  rimu:30,  mism:0, imu:0, mah:0, u:0 },
-    { q:20,    rgps:4000, rimu:50,  mism:0, imu:0, mah:0, u:15 },
-    { q:5000,  rgps:500,  rimu:50,  mism:1, imu:0, mah:0, u:30 },
-    { q:1000,  rgps:500,  rimu:30,  mism:0, imu:1, mah:0, u:0  },
-    { q:1000,  rgps:500,  rimu:50,  mism:0, imu:0, mah:1, u:0  }
+const PRESET_CFG=[
+  {},
+  {q:1000,rgps:200,rimu:30,mism:0,imu:0,mah:0,u:0,traj:0,drift:0},
+  {q:20,rgps:5000,rimu:50,mism:0,imu:0,mah:0,u:15,traj:0,drift:0},
+  {q:5000,rgps:500,rimu:50,mism:1,imu:0,mah:0,u:30,traj:0,drift:0},
+  {q:1000,rgps:500,rimu:30,mism:0,imu:1,mah:0,u:0,traj:0,drift:0},
+  {q:1000,rgps:500,rimu:50,mism:0,imu:0,mah:1,u:0,traj:0,drift:0},
+  {q:2000,rgps:300,rimu:50,mism:0,imu:0,mah:0,u:10,traj:0,drift:1},
+  {q:1,rgps:500,rimu:50,mism:0,imu:0,mah:0,u:0,traj:1,drift:0},
+  {q:3000,rgps:400,rimu:20,mism:0,imu:1,mah:0,u:0,traj:1,drift:0}
 ];
-
-document.getElementById('sel-preset').addEventListener('change', e=>{
-    let idx=+e.target.value;
-    document.getElementById('desc').innerHTML = PRESETS[idx];
-    let cfg = PRESET_CFG[idx]; if(!cfg || !Object.keys(cfg).length) return;
-    document.getElementById('sl-u').value    = cfg.u;    document.getElementById('lbl-u').textContent=cfg.u+' m/s²';
-    document.getElementById('sl-q').value    = cfg.q;    document.getElementById('lbl-q').textContent=cfg.q.toLocaleString();
-    document.getElementById('sl-rgps').value = cfg.rgps; document.getElementById('lbl-rgps').textContent=cfg.rgps;
-    document.getElementById('sl-rimu').value = cfg.rimu; document.getElementById('lbl-rimu').textContent=cfg.rimu;
-    document.getElementById('chk-mismatch').checked = !!cfg.mism;
-    document.getElementById('chk-imu').checked      = !!cfg.imu;
-    document.getElementById('chk-mahal').checked    = !!cfg.mah;
-    initSim();
+document.getElementById('sel-preset').addEventListener('change',e=>{
+  let idx=+e.target.value;
+  document.getElementById('desc').innerHTML=PRESETS[idx];
+  let cfg=PRESET_CFG[idx];if(!cfg||!Object.keys(cfg).length)return;
+  document.getElementById('sl-u').value=cfg.u;document.getElementById('lbl-u').textContent=cfg.u+' m/s²';
+  document.getElementById('sl-q').value=cfg.q;document.getElementById('lbl-q').textContent=cfg.q.toLocaleString();
+  document.getElementById('sl-rgps').value=cfg.rgps;document.getElementById('lbl-rgps').textContent=cfg.rgps;
+  document.getElementById('sl-rimu').value=cfg.rimu;document.getElementById('lbl-rimu').textContent=cfg.rimu;
+  document.getElementById('chk-mismatch').checked=!!cfg.mism;
+  document.getElementById('chk-imu').checked=!!cfg.imu;
+  document.getElementById('chk-mahal').checked=!!cfg.mah;
+  if(cfg.traj!=null)document.getElementById('sel-traj').value=cfg.traj;
+  drift_active=!!cfg.drift;
+  initSim();
 });
 
-// ─────────────────────────────────────────────
-// THEORY TABS
-// ─────────────────────────────────────────────
-const THEORY = [
+// ─── EKF PENDULUM DEMO ───
+let ekfSim=null,ekfInterval=null;
+const ekfLogs={t:[],true_th:[],meas:[],ekf_th:[],lin_th:[]};
+let ekf_t=0;
+
+function initEKF(){
+  ekfSim=new PendulumEKF(0.05,9.81,1.0);
+  ekf_t=0;
+  for(let k in ekfLogs)ekfLogs[k]=[];
+  // Also init a linearized KF for comparison
+  ekfSim.lkf_x=[[0.8],[0]];
+  ekfSim.lkf_P=[[0.1,0],[0,0.1]];
+}
+
+function ekfStep(){
+  let th0=ekfLogs.true_th.length?ekfLogs.true_th[ekfLogs.true_th.length-1]:0.8;
+  let om0=ekfLogs.t.length>1?(th0-(ekfLogs.true_th[ekfLogs.true_th.length-2]||th0))/0.05:0;
+  // true nonlinear pendulum
+  let th_new=th0+om0*0.05;
+  let om_new=om0-(9.81/1.0)*Math.sin(th0)*0.05;
+  // measurement: noisy sin(theta)
+  let meas=Math.sin(th_new)+gauss()*0.22;
+
+  ekfSim.x=[[th_new],[om_new]]; // set true state for display
+  let ekf_before=new PendulumEKF(0.05,9.81,1.0);
+  // use running EKF
+  ekfSim.predict();
+  ekfSim.update(meas);
+
+  // Linear KF (assumes small angle: sin(θ)≈θ)
+  let dt=0.05,g=9.81;
+  let Fl=[[1,dt],[-g*dt,1]];
+  let Ql=[[0.001,0],[0,0.001]];
+  let Rl=[[0.05]];
+  let lx=ekfSim.lkf_x,lP=ekfSim.lkf_P;
+  // predict
+  lx=M.mul(Fl,lx);
+  lP=M.add(M.mul(M.mul(Fl,lP),M.T(Fl)),Ql);
+  // update (h(x)≈x[0] for small angles)
+  let Hl=[[1,0]];
+  let lez=[[meas-lx[0][0]]];
+  let lS=M.add(M.mul(M.mul(Hl,lP),M.T(Hl)),Rl);
+  let lSi=[[1/lS[0][0]]];
+  let lK=M.mul(M.mul(lP,M.T(Hl)),lSi);
+  lx=M.add(lx,M.mul(lK,lez));
+  lP=M.mul(M.sub(M.eye(2),M.mul(lK,Hl)),lP);
+  ekfSim.lkf_x=lx;ekfSim.lkf_P=lP;
+
+  ekfLogs.t.push(ekf_t);
+  ekfLogs.true_th.push(th_new);
+  ekfLogs.meas.push(Math.asin(Math.max(-1,Math.min(1,meas)))); // back to angle
+  ekfLogs.ekf_th.push(ekfSim.x[0][0]);
+  ekfLogs.lin_th.push(lx[0][0]);
+  if(ekfLogs.t.length>200)for(let k in ekfLogs)ekfLogs[k].shift();
+  ekf_t+=0.05;
+  renderEKF();
+}
+
+function renderEKF(){
+  let cv=document.getElementById('cv-ekf');
+  if(!cv)return;
+  let dpr=window.devicePixelRatio||1;
+  let W=cv.parentElement.getBoundingClientRect().width||cv.parentElement.offsetWidth||600;
+  let h=200;
+  let wPx=Math.round(W*dpr),hPx=Math.round(h*dpr);
+  if(cv.width!==wPx||cv.height!==hPx){cv.width=wPx;cv.height=hPx;cv.style.width=W+'px';cv.style.height=h+'px';}
+  let ctx=cv.getContext('2d');
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+  ctx.clearRect(0,0,W,h);
+  if(ekfLogs.t.length<2)return;
+  grid(ctx,W,h);
+  let tMin=Math.max(0,ekf_t-10),tMax=ekf_t+0.4;
+  let mx=v=>((v-tMin)/(tMax-tMin))*W;
+  let my=v=>h/2-(v/1.2)*(h/2);
+  // true
+  ctx.strokeStyle='rgba(255,255,255,0.5)';ctx.lineWidth=1.5;ctx.setLineDash([5,4]);
+  ctx.beginPath();ctx.moveTo(mx(ekfLogs.t[0]),my(ekfLogs.true_th[0]));
+  for(let i=1;i<ekfLogs.t.length;i++)ctx.lineTo(mx(ekfLogs.t[i]),my(ekfLogs.true_th[i]));
+  ctx.stroke();ctx.setLineDash([]);
+  // linear KF
+  ctx.strokeStyle='#e74c3c';ctx.lineWidth=1.5;ctx.setLineDash([3,3]);
+  ctx.beginPath();ctx.moveTo(mx(ekfLogs.t[0]),my(ekfLogs.lin_th[0]));
+  for(let i=1;i<ekfLogs.t.length;i++)ctx.lineTo(mx(ekfLogs.t[i]),my(ekfLogs.lin_th[i]));
+  ctx.stroke();ctx.setLineDash([]);
+  // EKF
+  ctx.strokeStyle='#2f80ed';ctx.lineWidth=2.5;
+  ctx.beginPath();ctx.moveTo(mx(ekfLogs.t[0]),my(ekfLogs.ekf_th[0]));
+  for(let i=1;i<ekfLogs.t.length;i++)ctx.lineTo(mx(ekfLogs.t[i]),my(ekfLogs.ekf_th[i]));
+  ctx.stroke();
+}
+
+// ─── THEORY TABS ───
+const THEORY=[
 `<h3>1. Representación en espacio de estados</h3>
-<p>La teoría moderna de control describe sistemas dinámicos mediante ecuaciones matriciales de primer orden. Para un sistema lineal discreto e invariante en el tiempo (LTI-D):</p>
+<p>La teoría moderna de control describe sistemas dinámicos mediante ecuaciones matriciales de primer orden. Para un sistema lineal discreto (LTI-D):</p>
 <div class="math-block">$$x_{k+1} = F\\,x_k + B\\,u_k + w_k, \\qquad z_k = H\\,x_k + v_k$$</div>
-<p>En esta simulación el vector de estado es $x_k = [\\text{posición},\\;\\text{velocidad}]^\\top$ y la dinámica cinemática resulta en:</p>
-<div class="math-block">$$F = \\begin{bmatrix}1 & \\Delta t \\\\ 0 & 1\\end{bmatrix}, \\quad B = \\begin{bmatrix}\\tfrac{1}{2}\\Delta t^2 \\\\ \\Delta t\\end{bmatrix}, \\quad H = \\begin{bmatrix}1 & 0\\end{bmatrix}$$</div>
-<p>El término $w_k \\sim \\mathcal{N}(0,Q)$ representa perturbaciones físicas no modeladas (viento, fricción), y $v_k \\sim \\mathcal{N}(0,R)$ el error del sensor GPS. Ambos se modelan como ruido blanco gaussiano de media cero e independientes entre sí.</p>`,
+<p>En esta simulación: $x_k = [\\text{pos},\\;\\text{vel}]^\\top$. La cinemática de aceleración constante produce:</p>
+<div class="math-block">$$F = \\begin{bmatrix}1 & \\Delta t \\\\ 0 & 1\\end{bmatrix}, \\quad B = \\begin{bmatrix}\\tfrac{1}{2}\\Delta t^2 \\\\ \\Delta t\\end{bmatrix}, \\quad H_{GPS} = \\begin{bmatrix}1 & 0\\end{bmatrix}, \\quad H_{IMU} = \\begin{bmatrix}1 & 0 \\\\ 0 & 1\\end{bmatrix}$$</div>
+<p>Cuando se activa la fusión IMU, $H$ pasa de $1\\times2$ a $2\\times2$, lo que modifica directamente las dimensiones de $K$ (de $2\\times1$ a $2\\times2$) y la matriz de innovación $S$ (de escalar a $2\\times2$). Eso es exactamente lo que se ve en el panel de álgebra en tiempo real.</p>
+<p>Los ruidos $w_k \\sim \\mathcal{N}(0,Q)$ y $v_k \\sim \\mathcal{N}(0,R)$ son gaussianos blancos de media cero, independientes entre sí y respecto al estado inicial.</p>`,
 
 `<h3>2. El observador determinista de Luenberger</h3>
-<p>Antes del Filtro de Kalman, el observador de Luenberger resolvía el problema de estimación de estado no medible con una ganancia estática $L$ ajustada offline:</p>
+<p>Antes del Filtro de Kalman, el observador de Luenberger estimaba estados no medibles con una ganancia estática $L$ calculada offline:</p>
 <div class="math-block">$$\\dot{\\hat{x}} = A\\hat{x} + Bu + L(y - C\\hat{x}) \\quad \\Rightarrow \\quad \\dot{e} = (A - LC)\\,e$$</div>
-<p>El diseñador ubica los polos de $(A-LC)$ en el semiplano izquierdo para garantizar $e \\to 0$. Cuanto más alejados del origen, más rápida la convergencia, pero mayor la amplificación de ruido.</p>
-<div class="warn-box">⚠ <strong>Limitación estructural:</strong> La ganancia $L$ es constante y calculada a priori. El observador no sabe si una desviación es una aceleración real o ruido del sensor; no puede adaptarse en tiempo real según el nivel de incertidumbre actual del estado.</div>
-<p style="margin-top:10px">El Filtro de Kalman generaliza esto haciendo $L$ óptima y dependiente del tiempo, recalculada en cada paso en función de la covarianza $P_k$.</p>`,
+<p>Los polos de $(A-LC)$ se ubican en el semiplano izquierdo para garantizar $e \\to 0$. Más alejados del eje imaginario: convergencia más rápida, pero mayor amplificación del ruido.</p>
+<div class="warn-box">⚠ <strong>Limitación estructural:</strong> La ganancia $L$ es constante. El observador no puede distinguir si una desviación es una aceleración real o un pico de ruido; no se adapta al nivel de incertidumbre actual. El Filtro de Kalman resuelve esto haciendo $L \\equiv K_k$ óptima y variable en el tiempo.</div>`,
 
 `<h3>3. El enfoque estocástico: modelado de incertidumbre</h3>
-<p>Kalman reformula el problema de estimación como un problema de <strong>mínima varianza</strong>. Define dos covarianzas que cuantifican explícitamente la incertidumbre:</p>
+<p>Kalman reformula el problema como minimización de varianza. Define covarianzas que cuantifican explícitamente la incertidumbre de modelo y sensor:</p>
 <ul>
-<li><strong>$Q = E[w_k w_k^\\top]$</strong> — covarianza del ruido de proceso. Inyecta "duda física": cuán impredecible es la dinámica real respecto al modelo. En la simulación: $Q = G\\,G^\\top \\cdot q\\_scale$.</li>
-<li><strong>$R = E[v_k v_k^\\top]$</strong> — covarianza del ruido de medición. Cuantifica la imprecisión del sensor GPS ($R_{gps}$) o IMU ($R_{imu}$).</li>
+<li>$Q = E[w_k w_k^\\top]$ — covarianza del ruido de proceso. En la simulación: $Q = G\\,G^\\top \\cdot q\\_scale$ donde $G = [\\frac{1}{2}\\Delta t^2,\\; \\Delta t]^\\top$.</li>
+<li>$R = E[v_k v_k^\\top]$ — covarianza del ruido de medición. Sin IMU: escalar $R = r_{gps}$. Con IMU: $R = \\text{diag}(r_{gps},\\, r_{imu})$, matriz $2\\times2$.</li>
 </ul>
-<div class="math-block">$$\\text{Problema:} \\quad \\min_{\\hat{x}_k} \\; \\text{tr}\\left(E\\left[(x_k - \\hat{x}_k)(x_k - \\hat{x}_k)^\\top\\right]\\right)$$</div>
-<p>El filtro minimiza la traza de la covarianza del error a posteriori en cada paso de tiempo. La solución cerrada a este problema de optimización son exactamente las ecuaciones de Kalman.</p>`,
+<div class="math-block">$$\\hat{x}_k^* = \\arg\\min_{\\hat{x}} \\; \\text{tr}\\!\\left(E\\!\\left[(x_k - \\hat{x})(x_k - \\hat{x})^\\top\\right]\\right)$$</div>
+<p>La solución cerrada de este problema de optimización cuadrática bajo restricciones lineales son exactamente las ecuaciones recursivas del Filtro de Kalman.</p>`,
 
 `<h3>4. Ecuaciones recursivas del filtro</h3>
-<p>El algoritmo alterna dos etapas por cada tick temporal $k$:</p>
+<p>El ciclo alterna <em>predicción</em> (proyecta el estado hacia adelante con el modelo cinemático) y <em>corrección</em> (incorpora la medición del sensor ponderada por la ganancia óptima):</p>
 <div class="theory-cols">
 <div class="theory-box">
 <div class="box-label blue">Predicción (a priori)</div>
@@ -904,73 +950,104 @@ const THEORY = [
 </div>
 <div class="theory-box">
 <div class="box-label amber">Corrección (a posteriori)</div>
-<div class="math-block" style="margin:6px 0">$$K_k = P_k^- H^\\top (H P_k^- H^\\top + R)^{-1}$$</div>
+<div class="math-block" style="margin:6px 0">$$S_k = H P_k^- H^\\top + R$$</div>
+<div class="math-block" style="margin:6px 0">$$K_k = P_k^- H^\\top S_k^{-1}$$</div>
 <div class="math-block" style="margin:6px 0">$$\\hat{x}_k = \\hat{x}_k^- + K_k(z_k - H\\hat{x}_k^-)$$</div>
 <div class="math-block" style="margin:6px 0">$$P_k = (I - K_k H)\\,P_k^-$$</div>
 </div>
 </div>
-<p>La <strong>innovación</strong> $\\tilde{z}_k = z_k - H\\hat{x}_k^-$ es la diferencia entre la medición real y la predicha. La <strong>ganancia de Kalman</strong> $K_k$ determina qué porción de esa innovación se incorpora al estado: si $K \\to 0$ el filtro confía en el modelo; si $K \\to H^{-1}$ confía totalmente en el sensor.</p>`,
+<p>La <strong>innovación</strong> $\\tilde{z}_k = z_k - H\\hat{x}_k^-$ cuantifica la sorpresa: cuánto difiere la realidad de la predicción. La <strong>ganancia $K_k$</strong> es la balanza óptima: si $P \\gg R$, el filtro confía en el sensor; si $P \\ll R$, confía en el modelo. Con IMU activo, $K_k$ es $2\\times2$: una columna corrige la posición y otra la velocidad.</p>`,
 
-`<h3>5. Divergencia del filtro y ajuste de parámetros (Tuning)</h3>
-<p>Un filtro de Kalman puede <em>diverger</em> cuando la covarianza estimada $P$ subestima el error real. Causas comunes:</p>
+`<h3>5. Divergencia del filtro y estrategias de ajuste</h3>
+<p>Un filtro diverge cuando la covarianza estimada $P$ subestima el error real. El estado estimado se aleja del verdadero sin que el filtro lo detecte. Causas típicas:</p>
 <ul>
-<li><strong>Error de modelo ($Q$ muy baja):</strong> El filtro cree que su modelo es perfecto y no actualiza $P$. Ante dinámica no modelada, el estado estimado se aleja del real sin que el filtro lo detecte.</li>
-<li><strong>Ruido de proceso inflado ($Q$ muy alta):</strong> $P$ nunca converge; el filtro siempre confía más en el ruidoso sensor que en la física.</li>
-<li><strong>Linealización incorrecta (EKF):</strong> En sistemas no lineales, el jacobiano aproximado introduce sesgo acumulativo.</li>
+<li><strong>$Q$ muy baja:</strong> El filtro asume modelo perfecto; $P$ colapsa a cero y deja de actualizar. Pruébelo con el preset "Q nula".</li>
+<li><strong>$Q$ muy alta:</strong> $P$ nunca converge; el filtro siempre copia el sensor ruidoso.</li>
+<li><strong>Deriva del sensor:</strong> Bias sistemático no modelado en $R$. La innovación deja de ser de media cero. Visible en el preset "Deriva del sensor".</li>
+<li><strong>Mismatch de modelo:</strong> Ocultar la aceleración $u$ equivale a usar un modelo incorrecto; produce lag acumulativo.</li>
 </ul>
-<p><strong>Estrategias de tuning:</strong></p>
-<ul>
-<li><span class="tag blue">Offline</span> Identificar $Q$ y $R$ a partir de datos experimentales usando la <em>autocovarianza de la innovación</em>: si $E[\\tilde{z}_k \\tilde{z}_j^\\top] \\ne 0$ para $k\\ne j$, el filtro no está bien ajustado.</li>
-<li><span class="tag green">Adaptativo</span> Estimar $Q$ y $R$ en línea mediante ventanas deslizantes sobre la innovación (Filtro de Kalman Adaptativo).</li>
-<li><span class="tag blue">Prueba</span> Una innovación blanca con varianza $S_k = HP_k^-H^\\top + R$ confirma consistencia estadística del filtro.</li>
-</ul>`,
-
-`<h3>6. Extensiones no lineales: EKF y UKF</h3>
-<p>El filtro de Kalman estándar asume <strong>linealidad</strong>. Para sistemas no lineales $x_{k+1} = f(x_k, u_k) + w_k$, $z_k = h(x_k) + v_k$, existen dos enfoques principales:</p>
+<p><strong>Diagnóstico:</strong> Una innovación bien calibrada debe ser <em>ruido blanco</em> de media cero con varianza igual a $S_k = HP_k^-H^\\top + R$. Desviaciones indican mal ajuste. La <strong>distancia de Mahalanobis</strong> $d^2 = \\tilde{z}^\\top S^{-1} \\tilde{z}$ sigue una distribución $\\chi^2$; valores por encima del umbral $\\chi^2_{0.05}$ (3.84 para 1 DOF, 5.99 para 2 DOF) delatan outliers.</p>
 <div class="theory-cols">
 <div class="theory-box">
-<div class="box-label blue">Filtro de Kalman Extendido (EKF)</div>
-<p style="font-size:12px;margin-top:6px">Linealiza $f$ y $h$ mediante series de Taylor de primer orden. Usa el Jacobiano evaluado en el estado estimado actual:</p>
-<div class="math-block" style="margin:6px 0;font-size:12px">$$F_k = \\left.\\frac{\\partial f}{\\partial x}\\right|_{\\hat{x}_{k-1}}, \\quad H_k = \\left.\\frac{\\partial h}{\\partial x}\\right|_{\\hat{x}_k^-}$$</div>
-<p style="font-size:11.5px;color:var(--text3)">Eficiente, pero puede diverger si la no-linealidad es fuerte o el estado inicial es impreciso.</p>
+<div class="box-label blue">Ajuste offline</div>
+<p style="font-size:12px;margin-top:6px">Identificar $Q$ y $R$ desde datos: la autocovarianza de la innovación debe ser cero para $k \\ne j$. Métodos: EM (Expectation-Maximization) o el estimador de Mehra (1970).</p>
 </div>
 <div class="theory-box">
-<div class="box-label amber">Filtro de Kalman Unscented (UKF)</div>
-<p style="font-size:12px;margin-top:6px">Propaga un conjunto de <em>sigma-points</em> determinísticos a través de la función no lineal exacta, capturando hasta el segundo momento de la distribución:</p>
-<div class="math-block" style="margin:6px 0;font-size:12px">$$\\mathcal{X}_i = \\hat{x} \\pm \\sqrt{(n+\\lambda)P}$$</div>
-<p style="font-size:11.5px;color:var(--text3)">Precisión superior al EKF sin necesidad de calcular Jacobianos. Recomendado para no-linealidades moderadas a fuertes.</p>
+<div class="box-label green">Ajuste adaptativo (AKF)</div>
+<p style="font-size:12px;margin-top:6px">Estimar $Q$ y $R$ en línea con ventanas deslizantes sobre la innovación. Permite al filtro reaccionar a cambios de régimen dinámico sin rediseño manual.</p>
+</div>
+</div>`,
+
+`<h3>6. EKF aplicado: estimación de ángulo de péndulo no lineal</h3>
+<p>El filtro de Kalman estándar (KF lineal) asume $f$ y $h$ lineales. El <strong>EKF</strong> maneja no-linealidades linelizando con el Jacobiano en cada paso. Demostración en vivo con un péndulo simple:</p>
+<div class="theory-cols">
+<div class="theory-box">
+<div class="box-label blue">Dinámica real (no lineal)</div>
+<div class="math-block" style="margin:6px 0;font-size:12px">$$\\ddot{\\theta} = -\\frac{g}{L}\\sin(\\theta)$$</div>
+<p style="font-size:11.5px;margin-top:4px">Estado: $x = [\\theta,\\, \\dot{\\theta}]^\\top$. Observación: $z = \\sin(\\theta) + v$. Para ángulos grandes, $\\sin(\\theta) \\neq \\theta$ y el KF lineal diverge.</p>
+</div>
+<div class="theory-box">
+<div class="box-label amber">Jacobiano del EKF</div>
+<div class="math-block" style="margin:6px 0;font-size:12px">$$F_k = \\begin{bmatrix}1 & \\Delta t \\\\ -\\frac{g}{L}\\cos(\\theta_k)\\Delta t & 1\\end{bmatrix}$$</div>
+<div class="math-block" style="margin:6px 0;font-size:12px">$$H_k = \\begin{bmatrix}\\cos(\\theta_k) & 0\\end{bmatrix}$$</div>
 </div>
 </div>
-<p style="margin-top:8px">Para sistemas con distribuciones no gaussianas (anomalías, modelos de mezcla), el <strong>Particle Filter</strong> (filtro de partículas) ofrece representación arbitraria de la distribución posterior, a costa de mayor costo computacional.</p>`
+<div class="ekf-demo">
+<div class="ekf-demo-header">
+  <div class="ekf-demo-title">Simulación en vivo: EKF vs KF lineal — péndulo θ₀ ≈ 46°</div>
+  <div class="ekf-controls">
+    <label>θ₀ <input type="range" id="ekf-th0" min="10" max="170" value="80" style="width:80px"> <span id="ekf-th0-lbl">80°</span></label>
+    <button class="btn-reset" style="padding:4px 10px;font-size:11px" onclick="resetEKF()">↺ Reiniciar</button>
+  </div>
+</div>
+<div style="padding:8px 12px 4px">
+  <div class="chart-legend" style="gap:16px">
+    <div class="legend-item"><div class="legend-line" style="border-top:2px dashed rgba(255,255,255,.5);background:none"></div>Real θ(t)</div>
+    <div class="legend-item"><div class="legend-line" style="background:var(--blue)"></div>EKF (no lineal)</div>
+    <div class="legend-item"><div class="legend-line" style="background:var(--red);border-top:2px dashed var(--red);background:none"></div>KF lineal (diverge)</div>
+  </div>
+</div>
+<div style="padding:0 12px 12px">
+  <canvas id="cv-ekf" width="600" height="200" style="width:100%;height:200px;display:block;background:var(--bg2);border-radius:6px"></canvas>
+</div>
+</div>
+<p style="margin-top:10px">El KF lineal (línea roja) usa la aproximación $\\sin(\\theta) \\approx \\theta$ — válida solo para ángulos pequeños. Para ángulos grandes diverge progresivamente. El EKF (línea azul) propaga el Jacobiano exacto en cada paso y sigue la trayectoria real correctamente.</p>
+<div class="info-box">ℹ Para no-linealidades más severas o distribuciones no gaussianas, el <strong>UKF</strong> propaga sigma-points sin calcular jacobianos, y el <strong>Particle Filter</strong> representa la distribución completa mediante muestras ponderadas.</div>`
 ];
 
-let currentTab = 0;
-function setTab(i) {
-    currentTab = i;
-    document.getElementById('theory-body').innerHTML = THEORY[i];
-    document.querySelectorAll('.theory-tab').forEach((b,j)=>{
-        b.classList.toggle('active', j===i);
+let currentTab=0;
+function setTab(i){
+  currentTab=i;
+  document.getElementById('theory-body').innerHTML=THEORY[i];
+  document.querySelectorAll('.theory-tab').forEach((b,j)=>b.classList.toggle('active',j===i));
+  if(window.renderMathInElement)renderMathInElement(document.getElementById('theory-body'),{delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],throwOnError:false});
+  // Start EKF demo if on tab 5
+  if(i===5){
+    if(!ekfSim)initEKF();
+    if(!ekfInterval)ekfInterval=setInterval(ekfStep,50);
+    document.getElementById('ekf-th0').addEventListener('input',e=>{
+      document.getElementById('ekf-th0-lbl').textContent=e.target.value+'°';
     });
-    // re-render KaTeX
-    if(window.renderMathInElement) {
-        renderMathInElement(document.getElementById('theory-body'), {
-            delimiters:[{left:'$$',right:'$$',display:true},{left:'$',right:'$',display:false}],
-            throwOnError:false
-        });
-    }
+  } else {
+    if(ekfInterval){clearInterval(ekfInterval);ekfInterval=null;}
+  }
 }
 
-// ─────────────────────────────────────────────
-// BOOT
-// ─────────────────────────────────────────────
-window.addEventListener('load', ()=>{
-    initSim();
-    document.getElementById('desc').innerHTML = PRESETS[0];
-    setTab(0);
-    // Wait for layout to settle before starting the loop
-    requestAnimationFrame(() => requestAnimationFrame(() => {
-        setInterval(step, 50);
-    }));
+function resetEKF(){
+  let th0=(+document.getElementById('ekf-th0').value)*Math.PI/180;
+  initEKF();
+  ekfSim.x=[[th0],[0]];
+  ekfSim.lkf_x=[[th0],[0]];
+}
+
+// ─── BOOT ───
+window.addEventListener('load',()=>{
+  initSim();
+  document.getElementById('desc').innerHTML=PRESETS[0];
+  setTab(0);
+  setupChartTooltip('wrap-innov','tt-innov');
+  setupChartTooltip('wrap-kgain','tt-kgain');
+  requestAnimationFrame(()=>requestAnimationFrame(()=>setInterval(step,50)));
 });
 </script>
 </body>
